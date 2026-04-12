@@ -42,6 +42,14 @@ export class LobbyScene extends Phaser.Scene {
       this.updateLobbyDisplay();
     });
 
+    // Request current room state (in case we missed the broadcast during scene transition)
+    socket.emit("getRoomInfo", (room) => {
+      if (room) {
+        this.roomInfo = room;
+        this.updateLobbyDisplay();
+      }
+    });
+
     socket.on("gameStarting", () => {
       this.cleanupOverlay();
       this.scene.start("GameScene", {

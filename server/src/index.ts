@@ -54,6 +54,16 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Get current room info (called when LobbyScene loads)
+  socket.on("getRoomInfo", (callback) => {
+    const roomCode = roomManager.getPlayerRoom(socket.id);
+    if (roomCode) {
+      callback(roomManager.getRoomInfo(roomCode));
+    } else {
+      callback(null);
+    }
+  });
+
   // Change bike color
   socket.on("changeColor", (colorIndex) => {
     const roomCode = roomManager.getPlayerRoom(socket.id);

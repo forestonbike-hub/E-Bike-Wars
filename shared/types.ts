@@ -32,6 +32,7 @@ export interface RoomInfo {
 export interface ClientToServerEvents {
   createRoom: (data: { playerName: string }, callback: (response: { success: boolean; roomCode?: string; error?: string }) => void) => void;
   joinRoom: (data: { roomCode: string; playerName: string }, callback: (response: { success: boolean; error?: string }) => void) => void;
+  getRoomInfo: (callback: (room: RoomInfo | null) => void) => void;
   changeColor: (colorIndex: number) => void;
   toggleReady: () => void;
   startGame: () => void;
