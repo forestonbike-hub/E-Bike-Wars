@@ -10,6 +10,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: true, // expose on local network for tablet/phone testing
     proxy: {
       "/socket.io": {
         target: "http://localhost:3000",

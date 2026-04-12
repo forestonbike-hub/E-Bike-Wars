@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { Bike } from "../objects/Bike";
-import { VirtualJoystick } from "../ui/VirtualJoystick";
+import { TouchControls, isTouchDevice } from "../ui/TouchControls";
 
 const ARENA_WIDTH = 1600;
 const ARENA_HEIGHT = 1200;
@@ -12,8 +12,8 @@ export class GameScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private spaceKey!: Phaser.Input.Keyboard.Key;
-  private joystick: VirtualJoystick | null = null;
-  private isMobile: boolean = false;
+  private touchControls: TouchControls | null = null;
+  private useTouch: boolean = false;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
 
   // HUD elements
@@ -26,7 +26,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
-    this.isMobile = !this.sys.game.device.os.desktop;
+    this.useTouch = isTouchDevice();
 
     // Create static group for all walls and obstacles
     this.walls = this.physics.add.staticGroup();
@@ -61,9 +61,9 @@ export class GameScene extends Phaser.Scene {
       this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     }
 
-    // Set up mobile controls
-    if (this.isMobile) {
-      this.createMobileControls();
+    // Set up touch controls for tablet/phone
+    if (this.useTouch) {
+      this.touchControls = new TouchControls(this);
     }
 
     // Camera follows player
@@ -137,40 +137,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private createMobileControls() {
-    this.joystick = new VirtualJoystick(this, 120, this.scale.height - 120, 50);
-
-    // Boost button (right side)
-    const btnX = this.scale.width - 80;
-    const btnY = this.scale.height - 100;
-
-    const boostBtnContainer = this.add.container(btnX, btnY);
-    boostBtnContainer.setScrollFactor(0);
-    boostBtnContainer.setDepth(100);
-
-    const btnBg = this.add.circle(0, 0, 35, 0xff8800, 0.7);
-    btnBg.setStrokeStyle(3, 0xffcc00);
-    const btnText = this.add.text(0, 0, "BOOST", {
-      fontSize: "12px",
-      color: "#ffffff",
-      fontFamily: "Arial, sans-serif",
-      fontStyle: "bold",
-    }).setOrigin(0.5);
-
-    boostBtnContainer.add([btnBg, btnText]);
-
-    btnBg.setInteractive();
-    btnBg.on("pointerdown", () => {
-      this.bike.boostInput = true;
-    });
-    btnBg.on("pointerup", () => {
-      this.bike.boostInput = false;
-    });
-    btnBg.on("pointerout", () => {
-      this.bike.boostInput = false;
-    });
-  }
-
   private createHUD() {
     const hudX = 20;
     const hudY = 20;
@@ -196,8 +162,8 @@ export class GameScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(100);
 
     // Controls hint (bottom center, fades after a few seconds)
-    const controlsHint = this.isMobile
-      ? "Joystick to steer  |  BOOST button for speed burst"
+    const controlsHint = this.useTouch
+      ? "Joystick to steer and drive  |  BOOST button for speed burst"
       : "WASD / Arrows to drive  |  SPACE to boost";
 
     const hint = this.add.text(
@@ -251,7 +217,7 @@ export class GameScene extends Phaser.Scene {
       this.boostReadyText.setText("BOOSTING!");
       this.boostReadyText.setColor("#ffcc00");
     } else if (boostPercent >= 1) {
-      this.boostReadyText.setText(this.isMobile ? "Boost ready!" : "Boost ready! [SPACE]");
+      this.boostReadyText.setText(this.useTouch ? "Boost ready!" : "Boost ready! [SPACE]");
       this.boostReadyText.setColor("#ff8800");
     } else {
       this.boostReadyText.setText("Boost recharging...");
@@ -260,8 +226,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
-    // Read keyboard input
-    if (!this.isMobile && this.cursors) {
+    if (this.useTouch && this.touchControls) {
+      // Read touch controls (tablet/phone)
+      const touch = this.touchControls.getInput();
+      this.bike.turnInput = touch.turnInput;
+      this.bike.throttleInput = touch.throttleInput;
+      this.bike.boostInput = touch.boostInput;
+    } else if (this.cursors) {
+      // Read keyboard input (desktop)
       const left = this.cursors.left.isDown || this.wasd.A.isDown;
       const right = this.cursors.right.isDown || this.wasd.D.isDown;
       const up = this.cursors.up.isDown || this.wasd.W.isDown;
@@ -270,13 +242,6 @@ export class GameScene extends Phaser.Scene {
       this.bike.turnInput = (left ? -1 : 0) + (right ? 1 : 0);
       this.bike.throttleInput = (up ? 1 : 0) + (down ? -1 : 0);
       this.bike.boostInput = this.spaceKey.isDown;
-    }
-
-    // Read joystick input
-    if (this.isMobile && this.joystick) {
-      const joy = this.joystick.getInput();
-      this.bike.turnInput = joy.x;
-      this.bike.throttleInput = joy.y > 0.2 ? 1 : joy.y < -0.2 ? -1 : 0;
     }
 
     this.bike.update(time, delta);
