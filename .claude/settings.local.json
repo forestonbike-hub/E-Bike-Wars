@@ -23,7 +23,10 @@
       "Bash(unzip -o gh.zip -d gh-cli)",
       "Bash(/c/Users/fores/gh-cli/bin/gh.exe --version)",
       "Bash(/c/Users/fores/gh-cli/bin/gh.exe auth:*)",
-      "Bash(/c/Users/fores/gh-cli/bin/gh.exe repo:*)"
+      "Bash(/c/Users/fores/gh-cli/bin/gh.exe repo:*)",
+      "Bash(curl -s http://localhost:5173/src/main.ts)",
+      "Bash(curl -s http://localhost:5173/src/objects/Bike.ts)",
+      "Bash(curl -s http://localhost:5173/src/ui/VirtualJoystick.ts)"
     ]
   }
 }
