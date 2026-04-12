@@ -6,7 +6,9 @@
       "Bash(npm run:*)",
       "Bash(curl -s http://localhost:5173)",
       "Bash(taskkill //F //IM \"node.exe\")",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(gh auth:*)",
+      "Bash(where gh:*)"
     ]
   }
 }
