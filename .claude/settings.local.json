@@ -27,7 +27,9 @@
       "Bash(curl -s http://localhost:5173/src/main.ts)",
       "Bash(curl -s http://localhost:5173/src/objects/Bike.ts)",
       "Bash(curl -s http://localhost:5173/src/ui/VirtualJoystick.ts)",
-      "Bash(curl -s \"http://localhost:5173/src/scenes/GameScene.ts\")"
+      "Bash(curl -s \"http://localhost:5173/src/scenes/GameScene.ts\")",
+      "Bash(curl -s http://localhost:5173/src/scenes/GameScene.ts)",
+      "Bash(curl -s http://localhost:5173/src/ui/TouchControls.ts)"
     ]
   }
 }
