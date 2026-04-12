@@ -8,7 +8,22 @@
       "Bash(taskkill //F //IM \"node.exe\")",
       "Bash(git config:*)",
       "Bash(gh auth:*)",
-      "Bash(where gh:*)"
+      "Bash(where gh:*)",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Bash(cmd.exe //c \"where gh\")",
+      "Bash(cmd.exe //c \"dir /s /b \\\\\"C:\\\\\\\\Program Files\\\\\\\\gh.exe\\\\\"\")",
+      "Bash(cmd.exe //c \"dir /s /b \\\\\"C:\\\\\\\\Program Files \\(x86\\)\\\\\\\\gh.exe\\\\\"\")",
+      "Bash(reg query:*)",
+      "Bash(powershell.exe -Command \"Get-Command gh -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem -Path 'C:\\\\Program Files','C:\\\\Program Files \\(x86\\)' -Filter gh.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName\")",
+      "Bash(curl -L -o /c/Users/fores/gh.zip \"https://github.com/cli/cli/releases/download/v2.89.0/gh_2.89.0_windows_amd64.zip\")",
+      "Bash(curl --ssl-no-revoke -L -o /c/Users/fores/gh.zip \"https://github.com/cli/cli/releases/download/v2.89.0/gh_2.89.0_windows_amd64.zip\")",
+      "Bash(unzip -o gh.zip -d gh-cli)",
+      "Bash(/c/Users/fores/gh-cli/bin/gh.exe --version)",
+      "Bash(/c/Users/fores/gh-cli/bin/gh.exe auth:*)",
+      "Bash(/c/Users/fores/gh-cli/bin/gh.exe repo:*)"
     ]
   }
 }
