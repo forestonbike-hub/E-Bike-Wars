@@ -25,6 +25,18 @@
     </style>
   </head>
   <body>
+    <div id="loading" style="color: #e94560; font-family: Arial, sans-serif; font-size: 24px;">
+      Loading E-Bike Wars...
+    </div>
     <script type="module" src="/src/main.ts"></script>
+    <script>
+      // If you can see "Loading E-Bike Wars..." but nothing else,
+      // check the browser console (F12) for errors
+      window.addEventListener('error', function(e) {
+        document.getElementById('loading').innerHTML =
+          'Error: ' + e.message + '<br><small>' + e.filename + ':' + e.lineno + '</small>';
+        document.getElementById('loading').style.color = '#ff4444';
+      });
+    </script>
   </body>
 </html>

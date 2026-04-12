@@ -22,4 +22,8 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [BootScene, GameScene],
 };
 
+// Hide loading text when Phaser starts
+const loading = document.getElementById("loading");
+if (loading) loading.style.display = "none";
+
 new Phaser.Game(config);
