@@ -38,6 +38,7 @@ export interface GamePlayerState {
   heading: number; // radians
   speed: number;
   isBoosting: boolean;
+  isCrashed: boolean;
 }
 
 export interface GameState {

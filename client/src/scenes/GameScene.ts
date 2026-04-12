@@ -12,6 +12,7 @@ const OBSTACLE_COLOR = 0x556677;
 interface RenderedBike {
   container: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Graphics;
+  crashBody: Phaser.GameObjects.Graphics;
   nameLabel: Phaser.GameObjects.Text;
   boostTrail: Phaser.GameObjects.Graphics;
   // Interpolation targets
@@ -19,6 +20,7 @@ interface RenderedBike {
   targetY: number;
   targetHeading: number;
   isBoosting: boolean;
+  isCrashed: boolean;
   speed: number;
 }
 
@@ -39,8 +41,9 @@ export class GameScene extends Phaser.Scene {
   private boostText!: Phaser.GameObjects.Text;
   private playerCountText!: Phaser.GameObjects.Text;
 
-  // Track boost state for HUD
+  // Track boost/crash state for HUD
   private myBoosting: boolean = false;
+  private myCrashed: boolean = false;
   private mySpeed: number = 0;
 
   constructor() {
@@ -200,6 +203,33 @@ export class GameScene extends Phaser.Scene {
     body.strokeRoundedRect(-10, -18, 20, 36, 6);
     container.add(body);
 
+    // Crashed visual: bike tipped over with rider sprawled out
+    const crashBody = this.add.graphics();
+    // Tipped-over bike (wider, flatter shape)
+    crashBody.fillStyle(color, 0.7);
+    crashBody.fillRoundedRect(-18, -8, 36, 16, 4);
+    // Wheel marks
+    crashBody.fillStyle(0x333333, 0.8);
+    crashBody.fillCircle(-12, 0, 5);
+    crashBody.fillCircle(12, 0, 5);
+    // Rider fallen to the side
+    crashBody.fillStyle(0xffccaa, 0.9);
+    crashBody.fillCircle(0, -14, 6); // head
+    crashBody.fillStyle(color, 0.5);
+    crashBody.fillRoundedRect(-8, -8, 6, 14, 2); // body/arm
+    // Daze sparkles (small diamonds)
+    crashBody.fillStyle(0xffff00, 0.8);
+    crashBody.fillTriangle(8, -22, 5, -18, 11, -18);
+    crashBody.fillTriangle(8, -14, 5, -18, 11, -18);
+    crashBody.fillStyle(0xffff00, 0.6);
+    crashBody.fillTriangle(-6, -24, -9, -20, -3, -20);
+    crashBody.fillTriangle(-6, -16, -9, -20, -3, -20);
+    // Outline
+    crashBody.lineStyle(2, 0x222222, 0.6);
+    crashBody.strokeRoundedRect(-18, -8, 36, 16, 4);
+    crashBody.setVisible(false);
+    container.add(crashBody);
+
     const nameLabel = this.add.text(0, -30, playerState.name, {
       fontSize: "12px",
       color: "#ffffff",
@@ -218,12 +248,14 @@ export class GameScene extends Phaser.Scene {
     bike = {
       container,
       body,
+      crashBody,
       nameLabel,
       boostTrail,
       targetX: playerState.x,
       targetY: playerState.y,
       targetHeading: playerState.heading,
       isBoosting: playerState.isBoosting,
+      isCrashed: playerState.isCrashed,
       speed: playerState.speed,
     };
 
@@ -251,11 +283,13 @@ export class GameScene extends Phaser.Scene {
       bike.targetY = playerState.y;
       bike.targetHeading = playerState.heading;
       bike.isBoosting = playerState.isBoosting;
+      bike.isCrashed = playerState.isCrashed;
       bike.speed = playerState.speed;
 
       // Track own state for HUD
       if (playerState.id === this.myId) {
         this.myBoosting = playerState.isBoosting;
+        this.myCrashed = playerState.isCrashed;
         this.mySpeed = playerState.speed;
       }
     }
@@ -317,6 +351,10 @@ export class GameScene extends Phaser.Scene {
       // Keep name label upright
       bike.nameLabel.rotation = -bike.container.rotation;
 
+      // Toggle normal vs crashed visual
+      bike.body.setVisible(!bike.isCrashed);
+      bike.crashBody.setVisible(bike.isCrashed);
+
       // Boost trail effect
       bike.boostTrail.clear();
       if (bike.isBoosting) {
@@ -336,12 +374,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateHUD() {
-    // Boost bar (simplified since server controls timing)
     this.boostBar.clear();
     this.boostBar.fillStyle(0x333344, 0.8);
     this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
 
-    if (this.myBoosting) {
+    if (this.myCrashed) {
+      this.boostBar.fillStyle(0xff2222, 1);
+      this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+      this.boostText.setText("CRASHED!");
+      this.boostText.setColor("#ff2222");
+    } else if (this.myBoosting) {
       this.boostBar.fillStyle(0xffcc00, 1);
       this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
       this.boostText.setText("BOOSTING!");

@@ -14,6 +14,8 @@ const BOOST_MAX_SPEED = 450;
 const BOOST_ACCELERATION = 800;
 const BOOST_DURATION = 300;
 const BOOST_COOLDOWN = 5000;
+const CRASH_DURATION = 1000; // 1 second stun on collision
+const BIKE_RADIUS = 14;
 
 interface ServerBike {
   id: string;
@@ -26,6 +28,8 @@ interface ServerBike {
   isBoosting: boolean;
   boostTimer: number;
   boostCooldownTimer: number;
+  isCrashed: boolean;
+  crashTimer: number;
   // Last received input
   turnInput: number;
   throttleInput: number;
@@ -76,6 +80,8 @@ export class GameLoop {
       isBoosting: false,
       boostTimer: 0,
       boostCooldownTimer: 0,
+      isCrashed: false,
+      crashTimer: 0,
       turnInput: 0,
       throttleInput: 0,
       boostInput: false,
@@ -122,8 +128,27 @@ export class GameLoop {
     }
   }
 
+  private crashBike(bike: ServerBike) {
+    bike.isCrashed = true;
+    bike.crashTimer = CRASH_DURATION;
+    bike.speed = 0;
+    bike.isBoosting = false;
+    bike.boostTimer = 0;
+  }
+
   private updatePhysics(dt: number) {
     for (const bike of this.bikes.values()) {
+      // Crash recovery timer
+      if (bike.isCrashed) {
+        bike.crashTimer -= dt * 1000;
+        if (bike.crashTimer <= 0) {
+          bike.isCrashed = false;
+          bike.crashTimer = 0;
+        }
+        // Crashed bikes can't move or act, skip all input/physics
+        continue;
+      }
+
       // Boost timers
       if (bike.isBoosting) {
         bike.boostTimer -= dt * 1000;
@@ -173,11 +198,10 @@ export class GameLoop {
       bike.y += vy;
 
       // Wall collisions (keep inside arena)
-      const bikeRadius = 14;
-      const minX = WALL_THICKNESS + bikeRadius;
-      const maxX = ARENA_WIDTH - WALL_THICKNESS - bikeRadius;
-      const minY = WALL_THICKNESS + bikeRadius;
-      const maxY = ARENA_HEIGHT - WALL_THICKNESS - bikeRadius;
+      const minX = WALL_THICKNESS + BIKE_RADIUS;
+      const maxX = ARENA_WIDTH - WALL_THICKNESS - BIKE_RADIUS;
+      const minY = WALL_THICKNESS + BIKE_RADIUS;
+      const maxY = ARENA_HEIGHT - WALL_THICKNESS - BIKE_RADIUS;
 
       if (bike.x < minX) { bike.x = minX; bike.speed *= -0.3; }
       if (bike.x > maxX) { bike.x = maxX; bike.speed *= -0.3; }
@@ -186,8 +210,8 @@ export class GameLoop {
 
       // Obstacle collisions (simple AABB)
       for (const obs of OBSTACLES) {
-        const halfW = obs.w / 2 + bikeRadius;
-        const halfH = obs.h / 2 + bikeRadius;
+        const halfW = obs.w / 2 + BIKE_RADIUS;
+        const halfH = obs.h / 2 + BIKE_RADIUS;
 
         if (
           bike.x > obs.x - halfW &&
@@ -195,7 +219,6 @@ export class GameLoop {
           bike.y > obs.y - halfH &&
           bike.y < obs.y + halfH
         ) {
-          // Push out of obstacle
           const overlapLeft = bike.x - (obs.x - halfW);
           const overlapRight = (obs.x + halfW) - bike.x;
           const overlapTop = bike.y - (obs.y - halfH);
@@ -213,9 +236,8 @@ export class GameLoop {
       }
     }
 
-    // Bike-to-bike collisions (circle vs circle)
-    const bikeRadius = 14;
-    const collisionDist = bikeRadius * 2;
+    // Bike-to-bike collisions: both bikes crash on contact
+    const collisionDist = BIKE_RADIUS * 2;
     const bikeArray = Array.from(this.bikes.values());
 
     for (let i = 0; i < bikeArray.length; i++) {
@@ -223,58 +245,26 @@ export class GameLoop {
         const a = bikeArray[i];
         const b = bikeArray[j];
 
+        // Skip if either is already crashed
+        if (a.isCrashed || b.isCrashed) continue;
+
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < collisionDist && dist > 0.001) {
-          // Normalize the collision vector
+          // Push bikes apart so they don't overlap while crashed
           const nx = dx / dist;
           const ny = dy / dist;
-
-          // Push bikes apart so they no longer overlap
           const overlap = collisionDist - dist;
           a.x -= nx * overlap * 0.5;
           a.y -= ny * overlap * 0.5;
           b.x += nx * overlap * 0.5;
           b.y += ny * overlap * 0.5;
 
-          // Calculate velocity components along collision axis
-          const aVx = Math.sin(a.heading) * a.speed;
-          const aVy = -Math.cos(a.heading) * a.speed;
-          const bVx = Math.sin(b.heading) * b.speed;
-          const bVy = -Math.cos(b.heading) * b.speed;
-
-          // Relative velocity along collision normal
-          const relVel = (aVx - bVx) * nx + (aVy - bVy) * ny;
-
-          // Only resolve if bikes are moving toward each other
-          if (relVel > 0) {
-            // Apply impulse (equal mass, so swap the normal component)
-            const bounce = 0.6;
-            const impulse = relVel * bounce;
-
-            const aNewVx = aVx - impulse * nx;
-            const aNewVy = aVy - impulse * ny;
-            const bNewVx = bVx + impulse * nx;
-            const bNewVy = bVy + impulse * ny;
-
-            // Convert back to speed + heading
-            a.speed = Math.sqrt(aNewVx * aNewVx + aNewVy * aNewVy);
-            b.speed = Math.sqrt(bNewVx * bNewVx + bNewVy * bNewVy);
-
-            // Update headings based on new velocity direction
-            if (a.speed > 5) {
-              a.heading = Math.atan2(aNewVx, -aNewVy);
-            }
-            if (b.speed > 5) {
-              b.heading = Math.atan2(bNewVx, -bNewVy);
-            }
-
-            // Cap post-collision speed
-            a.speed = Math.min(a.speed, BOOST_MAX_SPEED);
-            b.speed = Math.min(b.speed, BOOST_MAX_SPEED);
-          }
+          // Both bikes crash
+          this.crashBike(a);
+          this.crashBike(b);
         }
       }
     }
@@ -292,6 +282,7 @@ export class GameLoop {
         heading: bike.heading,
         speed: bike.speed,
         isBoosting: bike.isBoosting,
+        isCrashed: bike.isCrashed,
       });
     }
 
