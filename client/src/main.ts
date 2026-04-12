@@ -1,6 +1,15 @@
 import Phaser from "phaser";
-import { BootScene } from "./scenes/BootScene";
+import { HomeScene } from "./scenes/HomeScene";
+import { LobbyScene } from "./scenes/LobbyScene";
 import { GameScene } from "./scenes/GameScene";
+
+// Hide loading text
+const loading = document.getElementById("loading");
+if (loading) loading.style.display = "none";
+
+// Check URL for room code (e.g., /game/BIKE-7X3Q)
+const pathMatch = window.location.pathname.match(/^\/game\/([A-Z0-9-]+)$/i);
+const roomCodeFromURL = pathMatch ? pathMatch[1].toUpperCase() : null;
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -19,11 +28,12 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, GameScene],
+  scene: [HomeScene, LobbyScene, GameScene],
 };
 
-// Hide loading text when Phaser starts
-const loading = document.getElementById("loading");
-if (loading) loading.style.display = "none";
+const game = new Phaser.Game(config);
 
-new Phaser.Game(config);
+// If URL has a room code, pass it to the HomeScene so it pre-fills the join field
+if (roomCodeFromURL) {
+  game.scene.start("HomeScene", { roomCode: roomCodeFromURL });
+}
