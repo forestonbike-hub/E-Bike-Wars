@@ -13,8 +13,8 @@ export class GameScene extends Phaser.Scene {
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private joystick: VirtualJoystick | null = null;
-  private boostButton: Phaser.GameObjects.Container | null = null;
   private isMobile: boolean = false;
+  private walls!: Phaser.Physics.Arcade.StaticGroup;
 
   // HUD elements
   private boostBar!: Phaser.GameObjects.Graphics;
@@ -27,6 +27,9 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.isMobile = !this.sys.game.device.os.desktop;
+
+    // Create static group for all walls and obstacles
+    this.walls = this.physics.add.staticGroup();
 
     // Set world bounds to arena size
     this.physics.world.setBounds(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
@@ -42,6 +45,9 @@ export class GameScene extends Phaser.Scene {
       color: 0x4488ff,
       name: "Player",
     });
+
+    // Add collision between bike and walls/obstacles
+    this.physics.add.collider(this.bike, this.walls);
 
     // Set up keyboard input
     if (this.input.keyboard) {
@@ -72,10 +78,6 @@ export class GameScene extends Phaser.Scene {
 
     // Create HUD (fixed to camera)
     this.createHUD();
-
-    // Add obstacle collisions
-    const obstacles = this.physics.world.staticBodies;
-    this.physics.add.collider(this.bike, Array.from(obstacles.entries).map(e => e.gameObject));
   }
 
   private createArena() {
@@ -98,19 +100,18 @@ export class GameScene extends Phaser.Scene {
     grid.strokePath();
 
     // Walls
-    this.createWall(0, 0, ARENA_WIDTH, WALL_THICKNESS); // top
-    this.createWall(0, ARENA_HEIGHT - WALL_THICKNESS, ARENA_WIDTH, WALL_THICKNESS); // bottom
-    this.createWall(0, 0, WALL_THICKNESS, ARENA_HEIGHT); // left
-    this.createWall(ARENA_WIDTH - WALL_THICKNESS, 0, WALL_THICKNESS, ARENA_HEIGHT); // right
+    this.addWall(ARENA_WIDTH / 2, WALL_THICKNESS / 2, ARENA_WIDTH, WALL_THICKNESS); // top
+    this.addWall(ARENA_WIDTH / 2, ARENA_HEIGHT - WALL_THICKNESS / 2, ARENA_WIDTH, WALL_THICKNESS); // bottom
+    this.addWall(WALL_THICKNESS / 2, ARENA_HEIGHT / 2, WALL_THICKNESS, ARENA_HEIGHT); // left
+    this.addWall(ARENA_WIDTH - WALL_THICKNESS / 2, ARENA_HEIGHT / 2, WALL_THICKNESS, ARENA_HEIGHT); // right
   }
 
-  private createWall(x: number, y: number, w: number, h: number) {
-    const wall = this.add.rectangle(x + w / 2, y + h / 2, w, h, 0x445566);
-    this.physics.add.existing(wall, true); // static body
+  private addWall(x: number, y: number, w: number, h: number) {
+    const wall = this.add.rectangle(x, y, w, h, 0x445566);
+    this.walls.add(wall);
   }
 
   private createObstacles() {
-    // Scattered obstacles for tactical play
     const obstacleLayouts = [
       // Center cluster
       { x: 800, y: 600, w: 80, h: 80 },
@@ -132,7 +133,7 @@ export class GameScene extends Phaser.Scene {
     for (const obs of obstacleLayouts) {
       const rect = this.add.rectangle(obs.x, obs.y, obs.w, obs.h, OBSTACLE_COLOR);
       rect.setStrokeStyle(2, 0x667788);
-      this.physics.add.existing(rect, true);
+      this.walls.add(rect);
     }
   }
 
@@ -168,8 +169,6 @@ export class GameScene extends Phaser.Scene {
     btnBg.on("pointerout", () => {
       this.bike.boostInput = false;
     });
-
-    this.boostButton = boostBtnContainer;
   }
 
   private createHUD() {
@@ -278,7 +277,6 @@ export class GameScene extends Phaser.Scene {
       const joy = this.joystick.getInput();
       this.bike.turnInput = joy.x;
       this.bike.throttleInput = joy.y > 0.2 ? 1 : joy.y < -0.2 ? -1 : 0;
-      // Boost handled by button pointerdown
     }
 
     this.bike.update(time, delta);
