@@ -6,6 +6,7 @@ import type {
   ServerToClientEvents,
 } from "../../shared/types.js";
 import { RoomManager } from "./rooms/RoomManager.js";
+import { GameLoop } from "./game/GameLoop.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -17,6 +18,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
 });
 
 const roomManager = new RoomManager();
+const activeGames: Map<string, GameLoop> = new Map();
 
 // Helper: broadcast room state to all players in a room
 function broadcastRoomUpdate(roomCode: string) {
@@ -95,8 +97,33 @@ io.on("connection", (socket) => {
     }
 
     roomManager.startGame(roomCode);
-    io.to(roomCode).emit("gameStarting");
+
+    // Create and start the game loop for this room
+    const gameLoop = new GameLoop((state) => {
+      io.to(roomCode).emit("gameState", state);
+    });
+
+    // Add all players to the game
+    for (const player of roomInfo.players) {
+      gameLoop.addPlayer(player);
+    }
+
+    activeGames.set(roomCode, gameLoop);
+    gameLoop.start();
+
+    io.to(roomCode).emit("gameStarting", { players: roomInfo.players });
     broadcastRoomUpdate(roomCode);
+  });
+
+  // Player input during gameplay
+  socket.on("playerInput", (input) => {
+    const roomCode = roomManager.getPlayerRoom(socket.id);
+    if (!roomCode) return;
+
+    const gameLoop = activeGames.get(roomCode);
+    if (gameLoop) {
+      gameLoop.handleInput(socket.id, input);
+    }
   });
 
   // Leave room
@@ -112,10 +139,32 @@ io.on("connection", (socket) => {
 });
 
 function handlePlayerLeave(socket: any) {
+  const roomCode = roomManager.getPlayerRoom(socket.id);
+
+  // Remove from active game if playing
+  if (roomCode) {
+    const gameLoop = activeGames.get(roomCode);
+    if (gameLoop) {
+      gameLoop.removePlayer(socket.id);
+    }
+  }
+
   const result = roomManager.removePlayer(socket.id);
   if (result) {
     socket.leave(result.roomCode);
+
+    // If room was deleted (empty), stop the game loop
+    if (!roomManager.getRoomInfo(result.roomCode)) {
+      const gameLoop = activeGames.get(result.roomCode);
+      if (gameLoop) {
+        gameLoop.stop();
+        activeGames.delete(result.roomCode);
+        console.log(`Game loop stopped for room ${result.roomCode}`);
+      }
+    }
+
     broadcastRoomUpdate(result.roomCode);
+    io.to(result.roomCode).emit("playerLeft", socket.id);
   }
 }
 

@@ -15,7 +15,7 @@ export const BIKE_COLORS = [
 export interface Player {
   id: string;
   name: string;
-  colorIndex: number; // index into BIKE_COLORS
+  colorIndex: number;
   isHost: boolean;
   isReady: boolean;
 }
@@ -28,6 +28,31 @@ export interface RoomInfo {
   maxPlayers: number;
 }
 
+// Game state sent from server to all clients every tick
+export interface GamePlayerState {
+  id: string;
+  name: string;
+  colorIndex: number;
+  x: number;
+  y: number;
+  heading: number; // radians
+  speed: number;
+  isBoosting: boolean;
+}
+
+export interface GameState {
+  players: GamePlayerState[];
+  timestamp: number;
+}
+
+// Input sent from client to server every frame
+export interface PlayerInput {
+  turnInput: number;    // -1 to 1
+  throttleInput: number; // -1 to 1
+  boostInput: boolean;
+  seq: number; // sequence number for reconciliation
+}
+
 // Socket.io event types (client -> server)
 export interface ClientToServerEvents {
   createRoom: (data: { playerName: string }, callback: (response: { success: boolean; roomCode?: string; error?: string }) => void) => void;
@@ -37,13 +62,14 @@ export interface ClientToServerEvents {
   toggleReady: () => void;
   startGame: () => void;
   leaveRoom: () => void;
+  playerInput: (input: PlayerInput) => void;
 }
 
 // Socket.io event types (server -> client)
 export interface ServerToClientEvents {
   roomUpdated: (room: RoomInfo) => void;
-  gameStarting: () => void;
-  playerJoined: (player: Player) => void;
+  gameStarting: (data: { players: Player[] }) => void;
+  gameState: (state: GameState) => void;
   playerLeft: (playerId: string) => void;
   error: (message: string) => void;
 }

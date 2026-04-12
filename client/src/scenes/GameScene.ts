@@ -1,25 +1,47 @@
 import Phaser from "phaser";
-import { Bike } from "../objects/Bike";
+import { getSocket } from "../network/SocketManager";
 import { TouchControls, isTouchDevice } from "../ui/TouchControls";
+import { BIKE_COLORS, type GameState, type GamePlayerState, type Player } from "@shared/types";
 
 const ARENA_WIDTH = 1600;
 const ARENA_HEIGHT = 1200;
 const WALL_THICKNESS = 20;
 const OBSTACLE_COLOR = 0x556677;
 
+// Represents a rendered bike on screen
+interface RenderedBike {
+  container: Phaser.GameObjects.Container;
+  body: Phaser.GameObjects.Graphics;
+  nameLabel: Phaser.GameObjects.Text;
+  boostTrail: Phaser.GameObjects.Graphics;
+  // Interpolation targets
+  targetX: number;
+  targetY: number;
+  targetHeading: number;
+  isBoosting: boolean;
+  speed: number;
+}
+
 export class GameScene extends Phaser.Scene {
-  private bike!: Bike;
+  private bikes: Map<string, RenderedBike> = new Map();
+  private myId: string = "";
+  private inputSeq: number = 0;
+  private useTouch: boolean = false;
+  private touchControls: TouchControls | null = null;
+
+  // Keyboard
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private spaceKey!: Phaser.Input.Keyboard.Key;
-  private touchControls: TouchControls | null = null;
-  private useTouch: boolean = false;
-  private walls!: Phaser.Physics.Arcade.StaticGroup;
 
-  // HUD elements
+  // HUD
   private boostBar!: Phaser.GameObjects.Graphics;
-  private speedText!: Phaser.GameObjects.Text;
-  private boostReadyText!: Phaser.GameObjects.Text;
+  private boostText!: Phaser.GameObjects.Text;
+  private playerCountText!: Phaser.GameObjects.Text;
+
+  // Track boost state for HUD
+  private myBoosting: boolean = false;
+  private mySpeed: number = 0;
 
   constructor() {
     super({ key: "GameScene" });
@@ -27,27 +49,15 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.useTouch = isTouchDevice();
+    const socket = getSocket();
+    this.myId = socket.id || "";
 
-    // Create static group for all walls and obstacles
-    this.walls = this.physics.add.staticGroup();
-
-    // Set world bounds to arena size
+    // Set world bounds
     this.physics.world.setBounds(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
     // Draw arena
     this.createArena();
     this.createObstacles();
-
-    // Create player bike at center
-    this.bike = new Bike(this, {
-      x: ARENA_WIDTH / 2,
-      y: ARENA_HEIGHT / 2,
-      color: 0x4488ff,
-      name: "Player",
-    });
-
-    // Add collision between bike and walls/obstacles
-    this.physics.add.collider(this.bike, this.walls);
 
     // Set up keyboard input
     if (this.input.keyboard) {
@@ -61,13 +71,12 @@ export class GameScene extends Phaser.Scene {
       this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     }
 
-    // Set up touch controls for tablet/phone
+    // Touch controls
     if (this.useTouch) {
       this.touchControls = new TouchControls(this);
     }
 
-    // Camera follows player
-    this.cameras.main.startFollow(this.bike, true, 0.08, 0.08);
+    // Camera setup
     this.cameras.main.setZoom(1.2);
     this.cameras.main.setBounds(
       -WALL_THICKNESS * 2,
@@ -76,8 +85,24 @@ export class GameScene extends Phaser.Scene {
       ARENA_HEIGHT + WALL_THICKNESS * 4
     );
 
-    // Create HUD (fixed to camera)
+    // HUD
     this.createHUD();
+
+    // Listen for game state from server
+    socket.on("gameState", (state: GameState) => {
+      this.applyServerState(state);
+    });
+
+    socket.on("playerLeft", (playerId: string) => {
+      this.removeBike(playerId);
+    });
+
+    // Clean up on scene shutdown
+    this.events.on("shutdown", () => {
+      socket.off("gameState");
+      socket.off("playerLeft");
+      this.bikes.clear();
+    });
   }
 
   private createArena() {
@@ -86,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     floor.fillStyle(0x2a2a3e, 1);
     floor.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
-    // Grid lines for visual reference
+    // Grid lines
     const grid = this.add.graphics();
     grid.lineStyle(1, 0x3a3a4e, 0.3);
     for (let x = 0; x <= ARENA_WIDTH; x += 80) {
@@ -100,32 +125,23 @@ export class GameScene extends Phaser.Scene {
     grid.strokePath();
 
     // Walls
-    this.addWall(ARENA_WIDTH / 2, WALL_THICKNESS / 2, ARENA_WIDTH, WALL_THICKNESS); // top
-    this.addWall(ARENA_WIDTH / 2, ARENA_HEIGHT - WALL_THICKNESS / 2, ARENA_WIDTH, WALL_THICKNESS); // bottom
-    this.addWall(WALL_THICKNESS / 2, ARENA_HEIGHT / 2, WALL_THICKNESS, ARENA_HEIGHT); // left
-    this.addWall(ARENA_WIDTH - WALL_THICKNESS / 2, ARENA_HEIGHT / 2, WALL_THICKNESS, ARENA_HEIGHT); // right
-  }
-
-  private addWall(x: number, y: number, w: number, h: number) {
-    const wall = this.add.rectangle(x, y, w, h, 0x445566);
-    this.walls.add(wall);
+    this.add.rectangle(ARENA_WIDTH / 2, WALL_THICKNESS / 2, ARENA_WIDTH, WALL_THICKNESS, 0x445566);
+    this.add.rectangle(ARENA_WIDTH / 2, ARENA_HEIGHT - WALL_THICKNESS / 2, ARENA_WIDTH, WALL_THICKNESS, 0x445566);
+    this.add.rectangle(WALL_THICKNESS / 2, ARENA_HEIGHT / 2, WALL_THICKNESS, ARENA_HEIGHT, 0x445566);
+    this.add.rectangle(ARENA_WIDTH - WALL_THICKNESS / 2, ARENA_HEIGHT / 2, WALL_THICKNESS, ARENA_HEIGHT, 0x445566);
   }
 
   private createObstacles() {
     const obstacleLayouts = [
-      // Center cluster
       { x: 800, y: 600, w: 80, h: 80 },
-      // Corners
       { x: 300, y: 250, w: 60, h: 120 },
       { x: 1300, y: 250, w: 60, h: 120 },
       { x: 300, y: 900, w: 60, h: 120 },
       { x: 1300, y: 900, w: 60, h: 120 },
-      // Side barriers
       { x: 600, y: 400, w: 120, h: 30 },
       { x: 1000, y: 400, w: 120, h: 30 },
       { x: 600, y: 800, w: 120, h: 30 },
       { x: 1000, y: 800, w: 120, h: 30 },
-      // Extra cover
       { x: 500, y: 600, w: 30, h: 80 },
       { x: 1100, y: 600, w: 30, h: 80 },
     ];
@@ -133,118 +149,208 @@ export class GameScene extends Phaser.Scene {
     for (const obs of obstacleLayouts) {
       const rect = this.add.rectangle(obs.x, obs.y, obs.w, obs.h, OBSTACLE_COLOR);
       rect.setStrokeStyle(2, 0x667788);
-      this.walls.add(rect);
     }
   }
 
   private createHUD() {
-    const hudX = 20;
-    const hudY = 20;
+    this.boostBar = this.add.graphics().setScrollFactor(0).setDepth(100);
 
-    // Boost bar background
-    this.boostBar = this.add.graphics();
-    this.boostBar.setScrollFactor(0);
-    this.boostBar.setDepth(100);
-
-    // Speed text
-    this.speedText = this.add.text(hudX, hudY, "", {
-      fontSize: "14px",
-      color: "#aabbcc",
-      fontFamily: "Arial, sans-serif",
-    }).setScrollFactor(0).setDepth(100);
-
-    // Boost ready text
-    this.boostReadyText = this.add.text(hudX, hudY + 40, "", {
+    this.boostText = this.add.text(20, 42, "", {
       fontSize: "14px",
       color: "#ff8800",
       fontFamily: "Arial, sans-serif",
       fontStyle: "bold",
     }).setScrollFactor(0).setDepth(100);
 
-    // Controls hint (bottom center, fades after a few seconds)
-    const controlsHint = this.useTouch
-      ? "Joystick to steer and drive  |  BOOST button for speed burst"
-      : "WASD / Arrows to drive  |  SPACE to boost";
+    this.playerCountText = this.add.text(this.scale.width - 20, 20, "", {
+      fontSize: "14px",
+      color: "#aabbcc",
+      fontFamily: "Arial, sans-serif",
+      align: "right",
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
 
+    // Controls hint
     const hint = this.add.text(
       this.scale.width / 2,
       this.scale.height - 30,
-      controlsHint,
-      {
-        fontSize: "13px",
-        color: "#888899",
-        fontFamily: "Arial, sans-serif",
-      }
+      this.useTouch ? "Joystick to drive  |  BOOST button" : "WASD to drive  |  SPACE to boost",
+      { fontSize: "13px", color: "#888899", fontFamily: "Arial, sans-serif" }
     ).setOrigin(0.5).setScrollFactor(0).setDepth(100);
 
-    this.tweens.add({
-      targets: hint,
-      alpha: 0,
-      delay: 5000,
-      duration: 1000,
-    });
+    this.tweens.add({ targets: hint, alpha: 0, delay: 5000, duration: 1000 });
   }
 
-  private updateHUD() {
-    const boostPercent = this.bike.getBoostCooldownPercent();
-    const speedPercent = this.bike.getSpeedPercent();
+  private getOrCreateBike(playerState: GamePlayerState): RenderedBike {
+    let bike = this.bikes.get(playerState.id);
+    if (bike) return bike;
 
-    // Speed text
-    const speedLabel = speedPercent < 0.1 ? "Stopped" : speedPercent < 0.4 ? "Cruising" : speedPercent < 0.7 ? "Fast" : "Full Speed";
-    this.speedText.setText(`Speed: ${speedLabel}`);
+    // Create new bike visual
+    const container = this.add.container(playerState.x, playerState.y);
 
-    // Boost bar
-    this.boostBar.clear();
-    const barX = 20;
-    const barY = 38;
-    const barW = 120;
-    const barH = 8;
+    const boostTrail = this.add.graphics();
+    container.add(boostTrail);
 
-    // Background
-    this.boostBar.fillStyle(0x333344, 0.8);
-    this.boostBar.fillRoundedRect(barX, barY, barW, barH, 4);
+    const body = this.add.graphics();
+    const color = BIKE_COLORS[playerState.colorIndex]?.value || 0x4488ff;
+    body.fillStyle(color, 1);
+    body.fillRoundedRect(-10, -18, 20, 36, 6);
+    body.fillStyle(0xffffff, 0.9);
+    body.fillTriangle(-5, -14, 5, -14, 0, -22);
+    body.lineStyle(2, 0x222222, 1);
+    body.strokeRoundedRect(-10, -18, 20, 36, 6);
+    container.add(body);
 
-    // Fill
-    if (boostPercent >= 1) {
-      this.boostBar.fillStyle(0xff8800, 1);
-    } else {
-      this.boostBar.fillStyle(0x886644, 0.6);
+    const nameLabel = this.add.text(0, -30, playerState.name, {
+      fontSize: "12px",
+      color: "#ffffff",
+      fontFamily: "Arial, sans-serif",
+      fontStyle: "bold",
+      stroke: "#000000",
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    container.add(nameLabel);
+
+    // If this is our own bike, camera follows it
+    if (playerState.id === this.myId) {
+      this.cameras.main.startFollow(container, true, 0.08, 0.08);
     }
-    this.boostBar.fillRoundedRect(barX, barY, barW * boostPercent, barH, 4);
 
-    // Boost ready text
-    if (this.bike.getIsBoosting()) {
-      this.boostReadyText.setText("BOOSTING!");
-      this.boostReadyText.setColor("#ffcc00");
-    } else if (boostPercent >= 1) {
-      this.boostReadyText.setText(this.useTouch ? "Boost ready!" : "Boost ready! [SPACE]");
-      this.boostReadyText.setColor("#ff8800");
-    } else {
-      this.boostReadyText.setText("Boost recharging...");
-      this.boostReadyText.setColor("#666677");
+    bike = {
+      container,
+      body,
+      nameLabel,
+      boostTrail,
+      targetX: playerState.x,
+      targetY: playerState.y,
+      targetHeading: playerState.heading,
+      isBoosting: playerState.isBoosting,
+      speed: playerState.speed,
+    };
+
+    this.bikes.set(playerState.id, bike);
+    return bike;
+  }
+
+  private removeBike(playerId: string) {
+    const bike = this.bikes.get(playerId);
+    if (bike) {
+      bike.container.destroy();
+      this.bikes.delete(playerId);
     }
   }
 
-  update(time: number, delta: number) {
+  private applyServerState(state: GameState) {
+    const activeIds = new Set<string>();
+
+    for (const playerState of state.players) {
+      activeIds.add(playerState.id);
+      const bike = this.getOrCreateBike(playerState);
+
+      // Set interpolation targets
+      bike.targetX = playerState.x;
+      bike.targetY = playerState.y;
+      bike.targetHeading = playerState.heading;
+      bike.isBoosting = playerState.isBoosting;
+      bike.speed = playerState.speed;
+
+      // Track own state for HUD
+      if (playerState.id === this.myId) {
+        this.myBoosting = playerState.isBoosting;
+        this.mySpeed = playerState.speed;
+      }
+    }
+
+    // Remove bikes that are no longer in the state
+    for (const [id] of this.bikes) {
+      if (!activeIds.has(id)) {
+        this.removeBike(id);
+      }
+    }
+
+    // Update player count
+    this.playerCountText.setText(`Players: ${state.players.length}`);
+  }
+
+  update(_time: number, _delta: number) {
+    // Read and send input
+    let turnInput = 0;
+    let throttleInput = 0;
+    let boostInput = false;
+
     if (this.useTouch && this.touchControls) {
-      // Read touch controls (tablet/phone)
       const touch = this.touchControls.getInput();
-      this.bike.turnInput = touch.turnInput;
-      this.bike.throttleInput = touch.throttleInput;
-      this.bike.boostInput = touch.boostInput;
+      turnInput = touch.turnInput;
+      throttleInput = touch.throttleInput;
+      boostInput = touch.boostInput;
     } else if (this.cursors) {
-      // Read keyboard input (desktop)
       const left = this.cursors.left.isDown || this.wasd.A.isDown;
       const right = this.cursors.right.isDown || this.wasd.D.isDown;
       const up = this.cursors.up.isDown || this.wasd.W.isDown;
       const down = this.cursors.down.isDown || this.wasd.S.isDown;
 
-      this.bike.turnInput = (left ? -1 : 0) + (right ? 1 : 0);
-      this.bike.throttleInput = (up ? 1 : 0) + (down ? -1 : 0);
-      this.bike.boostInput = this.spaceKey.isDown;
+      turnInput = (left ? -1 : 0) + (right ? 1 : 0);
+      throttleInput = (up ? 1 : 0) + (down ? -1 : 0);
+      boostInput = this.spaceKey.isDown;
     }
 
-    this.bike.update(time, delta);
+    // Send input to server
+    const socket = getSocket();
+    socket.emit("playerInput", {
+      turnInput,
+      throttleInput,
+      boostInput,
+      seq: this.inputSeq++,
+    });
+
+    // Interpolate all bikes toward their target positions
+    for (const bike of this.bikes.values()) {
+      const lerpSpeed = 0.25;
+      bike.container.x += (bike.targetX - bike.container.x) * lerpSpeed;
+      bike.container.y += (bike.targetY - bike.container.y) * lerpSpeed;
+
+      // Interpolate heading (handle wrapping)
+      let headingDiff = bike.targetHeading - bike.container.rotation;
+      while (headingDiff > Math.PI) headingDiff -= Math.PI * 2;
+      while (headingDiff < -Math.PI) headingDiff += Math.PI * 2;
+      bike.container.rotation += headingDiff * lerpSpeed;
+
+      // Keep name label upright
+      bike.nameLabel.rotation = -bike.container.rotation;
+
+      // Boost trail effect
+      bike.boostTrail.clear();
+      if (bike.isBoosting) {
+        bike.boostTrail.fillStyle(0xff8800, 0.6);
+        bike.boostTrail.fillCircle(-4, 22, 4 + Math.random() * 3);
+        bike.boostTrail.fillCircle(4, 22, 4 + Math.random() * 3);
+        bike.boostTrail.fillStyle(0xffcc00, 0.4);
+        bike.boostTrail.fillCircle(0, 26, 3 + Math.random() * 2);
+      } else if (bike.speed > 175) {
+        bike.boostTrail.fillStyle(0xcccccc, 0.3);
+        bike.boostTrail.fillCircle(0, 22, 2);
+      }
+    }
+
+    // Update HUD
     this.updateHUD();
+  }
+
+  private updateHUD() {
+    // Boost bar (simplified since server controls timing)
+    this.boostBar.clear();
+    this.boostBar.fillStyle(0x333344, 0.8);
+    this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+
+    if (this.myBoosting) {
+      this.boostBar.fillStyle(0xffcc00, 1);
+      this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+      this.boostText.setText("BOOSTING!");
+      this.boostText.setColor("#ffcc00");
+    } else {
+      this.boostBar.fillStyle(0xff8800, 1);
+      this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+      this.boostText.setText(this.useTouch ? "Boost ready!" : "Boost ready! [SPACE]");
+      this.boostText.setColor("#ff8800");
+    }
   }
 }

@@ -34,7 +34,15 @@
       "Bash(powershell.exe -Command \"New-NetFirewallRule -DisplayName 'E-Bike Wars Dev Server' -Direction Inbound -Protocol TCP -LocalPort 5173,3000 -Action Allow\")",
       "Bash(curl -s http://localhost:5173/src/scenes/HomeScene.ts)",
       "Bash(curl -s http://localhost:5173/src/scenes/LobbyScene.ts)",
-      "Bash(curl -s http://localhost:5173/src/network/SocketManager.ts)"
+      "Bash(curl -s http://localhost:5173/src/network/SocketManager.ts)",
+      "Bash(taskkill //F //FI \"WINDOWTITLE eq *node*\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 66244)",
+      "Bash(taskkill //F //PID 19844)",
+      "Bash(taskkill //F //PID 73876)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(npx tsc:*)",
+      "Bash(start http://localhost:5173/)"
     ]
   }
 }
