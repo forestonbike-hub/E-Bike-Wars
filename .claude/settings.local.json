@@ -30,7 +30,8 @@
       "Bash(curl -s \"http://localhost:5173/src/scenes/GameScene.ts\")",
       "Bash(curl -s http://localhost:5173/src/scenes/GameScene.ts)",
       "Bash(curl -s http://localhost:5173/src/ui/TouchControls.ts)",
-      "Bash(curl -s http://localhost:5173/src/scenes/BootScene.ts)"
+      "Bash(curl -s http://localhost:5173/src/scenes/BootScene.ts)",
+      "Bash(powershell.exe -Command \"New-NetFirewallRule -DisplayName 'E-Bike Wars Dev Server' -Direction Inbound -Protocol TCP -LocalPort 5173,3000 -Action Allow\")"
     ]
   }
 }
