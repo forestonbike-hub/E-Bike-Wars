@@ -212,6 +212,72 @@ export class GameLoop {
         }
       }
     }
+
+    // Bike-to-bike collisions (circle vs circle)
+    const bikeRadius = 14;
+    const collisionDist = bikeRadius * 2;
+    const bikeArray = Array.from(this.bikes.values());
+
+    for (let i = 0; i < bikeArray.length; i++) {
+      for (let j = i + 1; j < bikeArray.length; j++) {
+        const a = bikeArray[i];
+        const b = bikeArray[j];
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < collisionDist && dist > 0.001) {
+          // Normalize the collision vector
+          const nx = dx / dist;
+          const ny = dy / dist;
+
+          // Push bikes apart so they no longer overlap
+          const overlap = collisionDist - dist;
+          a.x -= nx * overlap * 0.5;
+          a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+          b.y += ny * overlap * 0.5;
+
+          // Calculate velocity components along collision axis
+          const aVx = Math.sin(a.heading) * a.speed;
+          const aVy = -Math.cos(a.heading) * a.speed;
+          const bVx = Math.sin(b.heading) * b.speed;
+          const bVy = -Math.cos(b.heading) * b.speed;
+
+          // Relative velocity along collision normal
+          const relVel = (aVx - bVx) * nx + (aVy - bVy) * ny;
+
+          // Only resolve if bikes are moving toward each other
+          if (relVel > 0) {
+            // Apply impulse (equal mass, so swap the normal component)
+            const bounce = 0.6;
+            const impulse = relVel * bounce;
+
+            const aNewVx = aVx - impulse * nx;
+            const aNewVy = aVy - impulse * ny;
+            const bNewVx = bVx + impulse * nx;
+            const bNewVy = bVy + impulse * ny;
+
+            // Convert back to speed + heading
+            a.speed = Math.sqrt(aNewVx * aNewVx + aNewVy * aNewVy);
+            b.speed = Math.sqrt(bNewVx * bNewVx + bNewVy * bNewVy);
+
+            // Update headings based on new velocity direction
+            if (a.speed > 5) {
+              a.heading = Math.atan2(aNewVx, -aNewVy);
+            }
+            if (b.speed > 5) {
+              b.heading = Math.atan2(bNewVx, -bNewVy);
+            }
+
+            // Cap post-collision speed
+            a.speed = Math.min(a.speed, BOOST_MAX_SPEED);
+            b.speed = Math.min(b.speed, BOOST_MAX_SPEED);
+          }
+        }
+      }
+    }
   }
 
   private broadcastState() {
