@@ -366,12 +366,47 @@ export interface GamePlayerState {
   y: number;
   heading: number; // radians
   speed: number;
+  health: number;
+  maxHealth: number;
   isBoosting: boolean;
   isCrashed: boolean;
+  isDead: boolean;
+  mopExtended: boolean;
+  batteryActive: boolean; // true = motor assist, false = pedaling
+  shieldActive: boolean;  // trash can lid currently blocking
+}
+
+// Projectiles and map hazards visible to clients
+export interface GameProjectile {
+  id: string;
+  type: "newspaper" | "waterballoon";
+  x: number;
+  y: number;
+  heading: number;
+  ownerId: string;
+}
+
+export interface GameMapHazard {
+  id: string;
+  type: "slick" | "nails";
+  x: number;
+  y: number;
+  radius: number;
+}
+
+export interface GameDog {
+  id: string;
+  x: number;
+  y: number;
+  heading: number;
+  ownerId: string;
 }
 
 export interface GameState {
   players: GamePlayerState[];
+  projectiles: GameProjectile[];
+  hazards: GameMapHazard[];
+  dogs: GameDog[];
   timestamp: number;
 }
 
@@ -380,7 +415,14 @@ export interface PlayerInput {
   turnInput: number;    // -1 to 1
   throttleInput: number; // -1 to 1
   boostInput: boolean;
-  seq: number; // sequence number for reconciliation
+  nitroInput: boolean;    // nitro burst
+  mopToggle: boolean;     // toggle mop on/off
+  throwInput: boolean;    // fire newspapers / water balloon
+  dropInput: boolean;     // drop nails
+  dogInput: boolean;      // release dog
+  teleportInput: boolean; // use teleporter
+  shieldInput: boolean;   // activate trash can lid
+  seq: number;
 }
 
 // Socket.io event types (client -> server)

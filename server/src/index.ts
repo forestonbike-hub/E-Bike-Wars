@@ -211,13 +211,15 @@ io.on("connection", (socket) => {
 
       roomManager.startBattle(roomCode);
 
-      // Create and start the game loop
+      // Create and start the game loop with loadouts
       const gameLoop = new GameLoop((state) => {
         io.to(roomCode).emit("gameState", state);
       });
 
       for (const player of roomInfo.players) {
-        gameLoop.addPlayer(player);
+        const playerEquip = equipState.loadouts.get(player.id);
+        const itemIds = playerEquip ? Array.from(playerEquip.itemIds) : [];
+        gameLoop.addPlayer(player, itemIds);
       }
 
       activeGames.set(roomCode, gameLoop);

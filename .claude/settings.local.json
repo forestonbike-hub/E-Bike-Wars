@@ -42,7 +42,13 @@
       "Bash(taskkill //F //PID 73876)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
       "Bash(npx tsc:*)",
-      "Bash(start http://localhost:5173/)"
+      "Bash(start http://localhost:5173/)",
+      "Bash(npx vite:*)",
+      "Bash(npx tsx:*)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(taskkill //F //PID 63600 //PID 69112 //PID 49184 //PID 49640 //PID 77364 //PID 79936 //PID 80624)",
+      "Bash(taskkill //F //PID 77856 //PID 83528)",
+      "Bash(taskkill //F //PID 52488)"
     ]
   }
 }
