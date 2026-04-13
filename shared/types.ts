@@ -18,6 +18,7 @@ export interface Player {
   colorIndex: number;
   isHost: boolean;
   isReady: boolean;
+  isBot?: boolean;
 }
 
 export interface RoomInfo {
@@ -373,6 +374,7 @@ export interface GamePlayerState {
   isDead: boolean;
   mopExtended: boolean;
   batteryActive: boolean; // true = motor assist, false = pedaling
+  batteryPercent: number; // 0-100, how much battery remains
   shieldActive: boolean;  // trash can lid currently blocking
 }
 
@@ -435,6 +437,8 @@ export interface ClientToServerEvents {
   toggleReady: () => void;
   startGame: () => void;
   leaveRoom: () => void;
+  addBot: () => void;
+  removeBot: (botId: string) => void;
   playerInput: (input: PlayerInput) => void;
   // Equip phase
   toggleItem: (itemId: string) => void;
@@ -452,4 +456,6 @@ export interface ServerToClientEvents {
   equipPhaseStarting: () => void;
   equipUpdate: (data: { playerId: string; loadout: PlayerLoadout; isReady: boolean }) => void;
   battleStarting: () => void;
+  gameOver: (data: { winnerId: string; winnerName: string }) => void;
+  returnToLobby: () => void;
 }

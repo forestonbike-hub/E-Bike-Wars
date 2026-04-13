@@ -35,6 +35,27 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
 const roomManager = new RoomManager();
 const activeGames: Map<string, GameLoop> = new Map();
 
+// Generate a random bot loadout within budget
+function generateBotLoadout(): string[] {
+  const builds = [
+    // Speed demon
+    ["motor-upgrade", "battery-upgrade", "tires-skinny", "nitro-upgrade", "mop"],
+    // Tank
+    ["tires-tough", "bodyarmor-1", "bodyarmor-2", "helmet", "trashlid", "newspapers"],
+    // Chaos
+    ["dog", "nails", "waterballoon", "newspapers", "helmet"],
+    // Balanced
+    ["motor-upgrade", "helmet", "mop", "newspapers", "nitro-upgrade"],
+    // Ranged
+    ["newspapers", "waterballoon", "nails", "battery-upgrade", "helmet", "motor-upgrade"],
+    // Jouster
+    ["mop", "tires-skinny", "nitro-upgrade", "motor-upgrade", "helmet", "bodyarmor-1"],
+    // Dog runner
+    ["dog", "motor-upgrade", "nitro-upgrade", "teleporter"],
+  ];
+  return builds[Math.floor(Math.random() * builds.length)];
+}
+
 // Track equip phase state per room
 interface EquipState {
   loadouts: Map<string, { itemIds: Set<string>; isReady: boolean }>;
@@ -124,12 +145,48 @@ io.on("connection", (socket) => {
       loadouts: new Map(),
     };
     for (const player of roomInfo.players) {
-      equipState.loadouts.set(player.id, { itemIds: new Set(), isReady: false });
+      if (player.isBot) {
+        // Auto-equip bots with a random loadout
+        const botItems = generateBotLoadout();
+        equipState.loadouts.set(player.id, { itemIds: new Set(botItems), isReady: true });
+      } else {
+        equipState.loadouts.set(player.id, { itemIds: new Set(), isReady: false });
+      }
     }
     equipStates.set(roomCode, equipState);
 
     io.to(roomCode).emit("equipPhaseStarting");
     broadcastRoomUpdate(roomCode);
+
+    // Check if all non-bot players... well bots are already ready
+    // If only bots + host, host still needs to equip
+  });
+
+  // Add bot to room (host only)
+  socket.on("addBot", () => {
+    const roomCode = roomManager.getPlayerRoom(socket.id);
+    if (!roomCode) return;
+    const roomInfo = roomManager.getRoomInfo(roomCode);
+    if (!roomInfo || roomInfo.hostId !== socket.id) return;
+
+    const bot = roomManager.addBot(roomCode);
+    if (bot) {
+      broadcastRoomUpdate(roomCode);
+    } else {
+      socket.emit("error", "Cannot add more bots (max 4, or room full)");
+    }
+  });
+
+  // Remove bot from room (host only)
+  socket.on("removeBot", (botId) => {
+    const roomCode = roomManager.getPlayerRoom(socket.id);
+    if (!roomCode) return;
+    const roomInfo = roomManager.getRoomInfo(roomCode);
+    if (!roomInfo || roomInfo.hostId !== socket.id) return;
+
+    if (roomManager.removeBot(roomCode, botId)) {
+      broadcastRoomUpdate(roomCode);
+    }
   });
 
   // Equip phase: toggle an item
@@ -229,10 +286,24 @@ io.on("connection", (socket) => {
         io.to(roomCode).emit("gameState", state);
       });
 
+      // Game over callback: announce winner, return to lobby
+      gameLoop.setGameOverCallback((winnerId, winnerName) => {
+        io.to(roomCode).emit("gameOver", { winnerId, winnerName });
+
+        // After 5 seconds, clean up and return to lobby
+        setTimeout(() => {
+          gameLoop.stop();
+          activeGames.delete(roomCode);
+          roomManager.returnToLobby(roomCode);
+          io.to(roomCode).emit("returnToLobby");
+          broadcastRoomUpdate(roomCode);
+        }, 5000);
+      });
+
       for (const player of roomInfo.players) {
         const playerEquip = equipState.loadouts.get(player.id);
         const itemIds = playerEquip ? Array.from(playerEquip.itemIds) : [];
-        gameLoop.addPlayer(player, itemIds);
+        gameLoop.addPlayer(player, itemIds, !!player.isBot);
       }
 
       activeGames.set(roomCode, gameLoop);

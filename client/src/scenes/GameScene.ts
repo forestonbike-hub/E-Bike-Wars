@@ -80,6 +80,15 @@ export class GameScene extends Phaser.Scene {
   private healthHudFill!: Phaser.GameObjects.Graphics;
   private healthHudText!: Phaser.GameObjects.Text;
 
+  // Battery HUD
+  private batteryHudBg!: Phaser.GameObjects.Graphics;
+  private batteryHudFill!: Phaser.GameObjects.Graphics;
+  private batteryHudText!: Phaser.GameObjects.Text;
+
+  // Win overlay
+  private winOverlay: Phaser.GameObjects.Container | null = null;
+  private roomCode: string = "";
+
   // Own state for HUD
   private myBoosting = false;
   private myCrashed = false;
@@ -87,6 +96,7 @@ export class GameScene extends Phaser.Scene {
   private mySpeed = 0;
   private myHealth = 100;
   private myMaxHealth = 100;
+  private myBatteryPercent = 100;
 
   // One-shot tracking for USE key
   private useJustPressed = false;
@@ -96,6 +106,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   init(data: { roomCode?: string; loadout?: PlayerLoadout }) {
+    this.roomCode = data?.roomCode || "";
     // Build the list of usable items from the loadout
     this.usableItems = [];
     this.selectedItemIndex = -1;
@@ -171,9 +182,23 @@ export class GameScene extends Phaser.Scene {
     socket.on("gameState", (state: GameState) => this.applyServerState(state));
     socket.on("playerLeft", (playerId: string) => this.removeBike(playerId));
 
+    socket.on("gameOver", (data: { winnerId: string; winnerName: string }) => {
+      this.showWinOverlay(data.winnerName, data.winnerId === this.myId);
+    });
+
+    socket.on("returnToLobby", () => {
+      this.scene.start("LobbyScene", {
+        roomCode: this.roomCode,
+        playerName: "",
+      });
+    });
+
     this.events.on("shutdown", () => {
       socket.off("gameState");
       socket.off("playerLeft");
+      socket.off("gameOver");
+      socket.off("returnToLobby");
+      if (this.winOverlay) { this.winOverlay.destroy(); this.winOverlay = null; }
       this.bikes.clear();
       this.projectileGraphics.forEach(g => g.destroy());
       this.projectileGraphics.clear();
@@ -229,6 +254,13 @@ export class GameScene extends Phaser.Scene {
     this.healthHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.healthHudText = this.add.text(20, 72, "HP: 100", {
       fontSize: "14px", color: "#44cc66", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+    }).setScrollFactor(0).setDepth(100);
+
+    // Battery bar (below health bar)
+    this.batteryHudBg = this.add.graphics().setScrollFactor(0).setDepth(100);
+    this.batteryHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
+    this.batteryHudText = this.add.text(20, 102, "Battery: 100%", {
+      fontSize: "14px", color: "#ff8833", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setScrollFactor(0).setDepth(100);
 
     this.playerCountText = this.add.text(this.scale.width - 20, 20, "", {
@@ -470,6 +502,7 @@ export class GameScene extends Phaser.Scene {
         this.mySpeed = ps.speed;
         this.myHealth = ps.health;
         this.myMaxHealth = ps.maxHealth;
+        this.myBatteryPercent = ps.batteryPercent ?? 100;
       }
     }
 
@@ -728,5 +761,63 @@ export class GameScene extends Phaser.Scene {
     if (hpRatio < 0.3) this.healthHudText.setColor("#ff2222");
     else if (hpRatio < 0.6) this.healthHudText.setColor("#ffcc22");
     else this.healthHudText.setColor("#44cc66");
+
+    // Battery HUD
+    this.batteryHudBg.clear();
+    this.batteryHudFill.clear();
+    this.batteryHudBg.fillStyle(0x333344, 0.8);
+    this.batteryHudBg.fillRoundedRect(20, 86, 120, 10, 4);
+
+    const batRatio = this.myBatteryPercent / 100;
+    let batColor = 0xff8833; // orange
+    if (batRatio < 0.2) batColor = 0xff2222; // red when very low
+
+    this.batteryHudFill.fillStyle(batColor, 1);
+    this.batteryHudFill.fillRoundedRect(20, 86, 120 * batRatio, 10, 4);
+
+    this.batteryHudText.setText(`Battery: ${Math.ceil(this.myBatteryPercent)}%`);
+    if (batRatio < 0.2) this.batteryHudText.setColor("#ff2222");
+    else this.batteryHudText.setColor("#ff8833");
+  }
+
+  private showWinOverlay(winnerName: string, isMe: boolean) {
+    if (this.winOverlay) return;
+
+    const sw = this.scale.width;
+    const sh = this.scale.height;
+    const container = this.add.container(0, 0).setScrollFactor(0).setDepth(200);
+
+    // Semi-transparent backdrop
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.6);
+    bg.fillRect(0, 0, sw, sh);
+    container.add(bg);
+
+    // Winner announcement
+    const title = isMe ? "YOU WIN!" : `${winnerName} WINS!`;
+    const titleColor = isMe ? "#ffcc22" : "#ff4455";
+    const titleText = this.add.text(sw / 2, sh / 2 - 30, title, {
+      fontSize: "48px", color: titleColor, fontFamily: "Arial, sans-serif",
+      fontStyle: "bold", stroke: "#000000", strokeThickness: 4,
+    }).setOrigin(0.5);
+    container.add(titleText);
+
+    const subText = this.add.text(sw / 2, sh / 2 + 30, "Returning to lobby...", {
+      fontSize: "18px", color: "#aabbcc", fontFamily: "Arial, sans-serif",
+    }).setOrigin(0.5);
+    container.add(subText);
+
+    this.winOverlay = container;
+
+    // Pulse animation on the title
+    this.tweens.add({
+      targets: titleText,
+      scaleX: 1.1,
+      scaleY: 1.1,
+      yoyo: true,
+      repeat: -1,
+      duration: 600,
+      ease: "Sine.easeInOut",
+    });
   }
 }

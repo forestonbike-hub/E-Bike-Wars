@@ -10,6 +10,7 @@ const ARENA_HEIGHT = 1200;
 const WALL_THICKNESS = 20;
 const BIKE_RADIUS = 14;
 const CRASH_DAMAGE = 15; // HP lost per crash
+const BATTERY_REGEN_RATE = 0.08; // % per second when stopped (recharges over ~12 sec)
 
 // Obstacle definitions (must match client GameScene)
 const OBSTACLES = [
@@ -66,6 +67,7 @@ interface BikeStats {
 // ── Server-side bike state ──
 interface ServerBike {
   id: string;
+  isBot: boolean;
   name: string;
   colorIndex: number;
   x: number;
@@ -319,14 +321,20 @@ export class GameLoop {
   private interval: ReturnType<typeof setInterval> | null = null;
   private lastTick: number = 0;
   private onStateUpdate: (state: GameState) => void;
+  private onGameOver: ((winnerId: string, winnerName: string) => void) | null = null;
+  private gameEnded: boolean = false;
 
   constructor(onStateUpdate: (state: GameState) => void) {
     this.onStateUpdate = onStateUpdate;
   }
 
+  setGameOverCallback(cb: (winnerId: string, winnerName: string) => void) {
+    this.onGameOver = cb;
+  }
+
   // ── Player management ──
 
-  addPlayer(player: Player, itemIds: string[]) {
+  addPlayer(player: Player, itemIds: string[], isBot = false) {
     const count = this.bikes.size;
     const angle = (count / 8) * Math.PI * 2;
     const spawnRadius = 200;
@@ -342,6 +350,7 @@ export class GameLoop {
 
     const bike: ServerBike = {
       id: player.id,
+      isBot,
       name: player.name,
       colorIndex: player.colorIndex,
       x: cx + Math.cos(angle) * spawnRadius,
@@ -451,7 +460,9 @@ export class GameLoop {
       const dt = (now - this.lastTick) / 1000;
       this.lastTick = now;
 
+      this.updateBotAI(dt);
       this.updatePhysics(dt);
+      this.checkWinCondition();
 
       broadcastCounter++;
       if (broadcastCounter >= 3) {
@@ -520,6 +531,14 @@ export class GameLoop {
         if (bike.batteryRemaining <= 0) {
           bike.batteryRemaining = 0;
           bike.batteryActive = false;
+        }
+      }
+      // Battery regeneration when stopped or slow
+      if (!bike.batteryActive && bike.speed < 20) {
+        bike.batteryRemaining += bike.stats.batteryDuration * BATTERY_REGEN_RATE * dt;
+        if (bike.batteryRemaining >= bike.stats.batteryDuration) {
+          bike.batteryRemaining = bike.stats.batteryDuration;
+          bike.batteryActive = true;
         }
       }
 
@@ -1060,6 +1079,7 @@ export class GameLoop {
         isDead: bike.isDead,
         mopExtended: bike.mopExtended,
         batteryActive: bike.batteryActive,
+        batteryPercent: Math.round((bike.batteryRemaining / bike.stats.batteryDuration) * 100),
         shieldActive: bike.shieldActive,
       });
     }
@@ -1096,5 +1116,136 @@ export class GameLoop {
       dogs,
       timestamp: Date.now(),
     });
+  }
+
+  // ── Win condition ──
+
+  private checkWinCondition() {
+    if (this.gameEnded) return;
+    const allBikes = Array.from(this.bikes.values());
+    if (allBikes.length < 2) return; // need at least 2 players for a game
+
+    const alive = allBikes.filter(b => !b.isDead);
+    if (alive.length <= 1) {
+      this.gameEnded = true;
+      const winner = alive[0];
+      if (this.onGameOver) {
+        this.onGameOver(
+          winner ? winner.id : "",
+          winner ? winner.name : "Nobody",
+        );
+      }
+    }
+  }
+
+  // ── Bot AI ──
+
+  private updateBotAI(_dt: number) {
+    for (const bike of this.bikes.values()) {
+      if (!bike.isBot || bike.isDead || bike.isCrashed) continue;
+
+      // Find nearest alive enemy
+      let nearestEnemy: ServerBike | null = null;
+      let nearestDist = Infinity;
+      for (const other of this.bikes.values()) {
+        if (other.id === bike.id || other.isDead) continue;
+        const dx = other.x - bike.x;
+        const dy = other.y - bike.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestEnemy = other;
+        }
+      }
+
+      // Default: drive forward
+      bike.input.throttleInput = 1;
+      bike.input.turnInput = 0;
+      bike.input.boostInput = false;
+      bike.input.nitroInput = false;
+      bike.input.mopToggle = false;
+      bike.input.throwInput = false;
+      bike.input.dropInput = false;
+      bike.input.dogInput = false;
+      bike.input.teleportInput = false;
+      bike.input.shieldInput = false;
+
+      if (nearestEnemy) {
+        // Steer toward enemy
+        const dx = nearestEnemy.x - bike.x;
+        const dy = nearestEnemy.y - bike.y;
+        const angleToEnemy = Math.atan2(dx, -dy);
+        let angleDiff = angleToEnemy - bike.heading;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        // Steer toward enemy with some smoothing
+        if (angleDiff > 0.15) bike.input.turnInput = 1;
+        else if (angleDiff < -0.15) bike.input.turnInput = -1;
+        else bike.input.turnInput = 0;
+
+        // Use nitro when close-ish to enemy and facing them
+        if (nearestDist < 400 && Math.abs(angleDiff) < 0.5) {
+          bike.input.nitroInput = true;
+        }
+
+        // Use weapons based on distance
+        if (nearestDist < 250) {
+          // Close range: extend mop if we have it
+          if (bike.stats.hasMop && !bike.mopExtended && Math.abs(angleDiff) < 0.4) {
+            bike.input.mopToggle = true;
+          }
+          // Throw newspapers/balloons at close range
+          if (bike.stats.hasNewspapers && bike.newspaperAmmo > 0 && Math.abs(angleDiff) < 0.3) {
+            bike.input.throwInput = true;
+            bike.input.throwItemId = "newspapers";
+          } else if (bike.stats.hasWaterBalloon && bike.waterBalloonAmmo > 0 && Math.abs(angleDiff) < 0.4) {
+            bike.input.throwInput = true;
+            bike.input.throwItemId = "waterballoon";
+          }
+        } else if (nearestDist > 300) {
+          // Retract mop when far from enemies
+          if (bike.mopExtended) {
+            bike.input.mopToggle = true;
+          }
+        }
+
+        // Drop nails when enemy is behind us (chasing us)
+        if (bike.stats.hasNails && bike.nailAmmo > 0) {
+          const enemyBehind = Math.abs(angleDiff) > 2.5; // roughly behind
+          if (enemyBehind && nearestDist < 200) {
+            bike.input.dropInput = true;
+          }
+        }
+
+        // Release dog when enemy is nearby
+        if (bike.stats.hasDog && !bike.dogActive && bike.dogCooldown <= 0 && nearestDist < 350) {
+          bike.input.dogInput = true;
+        }
+
+        // Teleport to dodge when low health
+        if (bike.stats.hasTeleporter && bike.teleportUsesLeft > 0 && bike.health < 30 && nearestDist < 100) {
+          bike.input.teleportInput = true;
+        }
+
+        // Shield when enemy is very close and we're low health
+        if (bike.stats.hasTrashLid && bike.shieldUsesLeft > 0 && !bike.shieldActive && bike.health < 40 && nearestDist < 150) {
+          bike.input.shieldInput = true;
+        }
+      }
+
+      // Wall avoidance: steer away from walls
+      const wallMargin = 80;
+      if (bike.x < WALL_THICKNESS + wallMargin) bike.input.turnInput += 0.5;
+      if (bike.x > ARENA_WIDTH - WALL_THICKNESS - wallMargin) bike.input.turnInput -= 0.5;
+      if (bike.y < WALL_THICKNESS + wallMargin) bike.input.turnInput += 0.3;
+      if (bike.y > ARENA_HEIGHT - WALL_THICKNESS - wallMargin) bike.input.turnInput -= 0.3;
+      bike.input.turnInput = Math.max(-1, Math.min(1, bike.input.turnInput));
+
+      // Add slight randomness to make bots less predictable
+      if (Math.random() < 0.02) {
+        bike.input.turnInput += (Math.random() - 0.5) * 0.5;
+      }
+    }
   }
 }

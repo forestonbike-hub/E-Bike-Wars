@@ -153,15 +153,74 @@ export class RoomManager {
     return false;
   }
 
+  addBot(roomCode: string): Player | null {
+    const room = this.rooms.get(roomCode);
+    if (!room || room.state !== "lobby") return null;
+    if (room.players.size >= room.maxPlayers) return null;
+
+    // Count existing bots
+    let botCount = 0;
+    for (const p of room.players.values()) {
+      if (p.isBot) botCount++;
+    }
+    if (botCount >= 4) return null;
+
+    const botNames = ["Sparky", "Turbo", "Blitz", "Zippy", "Flash", "Bolt"];
+    const usedNames = new Set(Array.from(room.players.values()).map(p => p.name));
+    let botName = botNames[botCount] || `Bot-${botCount + 1}`;
+    if (usedNames.has(botName)) botName = `Bot-${Date.now() % 1000}`;
+
+    const usedColors = new Set(Array.from(room.players.values()).map(p => p.colorIndex));
+    let colorIndex = 0;
+    for (let i = 0; i < 8; i++) {
+      if (!usedColors.has(i)) { colorIndex = i; break; }
+    }
+
+    const botId = `bot-${Date.now()}-${botCount}`;
+    const bot: Player = {
+      id: botId,
+      name: botName,
+      colorIndex,
+      isHost: false,
+      isReady: true,
+      isBot: true,
+    };
+
+    room.players.set(botId, bot);
+    this.playerRooms.set(botId, roomCode);
+    return bot;
+  }
+
+  removeBot(roomCode: string, botId: string): boolean {
+    const room = this.rooms.get(roomCode);
+    if (!room || room.state !== "lobby") return false;
+    const player = room.players.get(botId);
+    if (!player || !player.isBot) return false;
+    room.players.delete(botId);
+    this.playerRooms.delete(botId);
+    return true;
+  }
+
+  returnToLobby(roomCode: string): boolean {
+    const room = this.rooms.get(roomCode);
+    if (!room) return false;
+    room.state = "lobby";
+    // Unready all players, bots stay ready
+    for (const p of room.players.values()) {
+      if (!p.isBot) p.isReady = false;
+    }
+    return true;
+  }
+
   canStartGame(roomCode: string): { canStart: boolean; reason?: string } {
     const room = this.rooms.get(roomCode);
     if (!room) return { canStart: false, reason: "Room not found" };
     if (room.state !== "lobby") return { canStart: false, reason: "Game already in progress" };
     if (room.players.size < 2) return { canStart: false, reason: "Need at least 2 players" };
 
-    // Check all non-host players are ready
+    // Check all non-host, non-bot players are ready
     for (const p of room.players.values()) {
-      if (!p.isHost && !p.isReady) {
+      if (!p.isHost && !p.isBot && !p.isReady) {
         return { canStart: false, reason: "Not all players are ready" };
       }
     }

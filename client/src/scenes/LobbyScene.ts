@@ -211,6 +211,9 @@ export class LobbyScene extends Phaser.Scene {
     const me = this.roomInfo.players.find(p => p.id === myId);
     const isHost = me?.isHost ?? false;
 
+    // Count bots for add-bot limit
+    const botCount = this.roomInfo.players.filter(p => p.isBot).length;
+
     // Update player list
     const listEl = document.getElementById("lobby-player-list");
     if (listEl) {
@@ -221,14 +224,28 @@ export class LobbyScene extends Phaser.Scene {
           const readyBadge = !p.isHost && p.isReady ? '<span style="color: #16c79a; font-size: 11px; margin-left: 6px;">READY</span>' : "";
           const youBadge = p.id === myId ? '<span style="color: #888899; font-size: 11px; margin-left: 6px;">(you)</span>' : "";
 
+          const botBadge = p.isBot ? '<span style="color: #ff8833; font-size: 11px; margin-left: 6px;">BOT</span>' : "";
+          const removeBotBtn = (isHost && p.isBot) ? `<button class="remove-bot-btn" data-bot-id="${p.id}" style="
+            padding: 2px 8px; font-size: 11px; border: 1px solid #ff4455; border-radius: 4px;
+            background: transparent; color: #ff4455; cursor: pointer; font-family: Arial, sans-serif; margin-left: 8px;
+          ">X</button>` : "";
+
           return `
             <div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #333355;">
               <div style="width: 20px; height: 20px; border-radius: 50%; background: ${color}; margin-right: 10px; flex-shrink: 0;"></div>
-              <div style="flex: 1; font-size: 15px;">${p.name}${youBadge}${hostBadge}${readyBadge}</div>
+              <div style="flex: 1; font-size: 15px;">${p.name}${youBadge}${hostBadge}${readyBadge}${botBadge}${removeBotBtn}</div>
             </div>
           `;
         })
         .join("");
+
+      // Wire up remove-bot buttons
+      listEl.querySelectorAll(".remove-bot-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const botId = (btn as HTMLElement).dataset.botId;
+          if (botId) getSocket().emit("removeBot", botId);
+        });
+      });
     }
 
     // Update color picker selection
@@ -262,6 +279,8 @@ export class LobbyScene extends Phaser.Scene {
         const canStart = this.roomInfo.players.length >= 2 &&
           this.roomInfo.players.every(p => p.isHost || p.isReady);
 
+        const canAddBot = botCount < 4 && this.roomInfo!.players.length < this.roomInfo!.maxPlayers;
+
         actionsEl.innerHTML = `
           <button id="lobby-start-btn" style="
             width: 260px;
@@ -283,11 +302,27 @@ export class LobbyScene extends Phaser.Scene {
                 : `${this.roomInfo.players.length} players ready!`
             }
           </div>
+          <button id="lobby-add-bot-btn" style="
+            margin-top: 12px;
+            padding: 8px 20px;
+            font-size: 14px;
+            border: 1px solid ${canAddBot ? "#ff8833" : "#444466"};
+            border-radius: 6px;
+            background: transparent;
+            color: ${canAddBot ? "#ff8833" : "#666688"};
+            cursor: ${canAddBot ? "pointer" : "not-allowed"};
+            font-family: Arial, sans-serif;
+          ">+ Add Bot${botCount > 0 ? ` (${botCount}/4)` : ""}</button>
         `;
 
         if (canStart) {
           document.getElementById("lobby-start-btn")!.addEventListener("click", () => {
             getSocket().emit("startGame");
+          });
+        }
+        if (canAddBot) {
+          document.getElementById("lobby-add-bot-btn")!.addEventListener("click", () => {
+            getSocket().emit("addBot");
           });
         }
       } else {
