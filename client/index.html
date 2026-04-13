@@ -35,6 +35,18 @@
     <div id="loading" style="color: #e94560; font-family: Arial, sans-serif; font-size: 24px;">
       Loading E-Bike Wars...
     </div>
+    <script>
+      // Force body to match actual viewport (Kindle Silk doesn't support dvh)
+      function fixViewport() {
+        document.body.style.width = window.innerWidth + 'px';
+        document.body.style.height = window.innerHeight + 'px';
+      }
+      fixViewport();
+      window.addEventListener('resize', fixViewport);
+      window.addEventListener('orientationchange', function() {
+        setTimeout(fixViewport, 200);
+      });
+    </script>
     <script type="module" src="/src/main.ts"></script>
     <script>
       // If you can see "Loading E-Bike Wars..." but nothing else,

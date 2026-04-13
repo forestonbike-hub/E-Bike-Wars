@@ -9,8 +9,11 @@ import Phaser from "phaser";
  *   Right side: Item slots (icons of purchased active items)
  *               USE button below the item slots
  *
- * Players tap an item icon to select it, then tap USE to activate.
+ * All controls use generous safe margins (SAFE_PAD) to stay visible
+ * even when browser chrome eats into the viewport on Kindle/tablet.
  */
+
+const SAFE_PAD = 180; // px from edge on a 1920x1200 canvas
 
 export interface TouchInput {
   turnInput: number;
@@ -70,14 +73,12 @@ export class TouchControls {
 
     const w = scene.scale.width;
     const h = scene.scale.height;
-    const scaleFactor = Math.min(w, h) / 600;
 
     // ── LEFT SIDE: Joystick + Nitro ──
 
-    this.joyRadius = Math.max(50, Math.min(80, 60 * scaleFactor));
-    const pad = this.joyRadius + 30;
-    this.joyBaseX = pad;
-    this.joyBaseY = h - pad - 60; // shifted up to make room for nitro
+    this.joyRadius = 100; // fixed large radius for 1920x1200
+    this.joyBaseX = SAFE_PAD + this.joyRadius;
+    this.joyBaseY = h - SAFE_PAD - this.joyRadius - 60;
 
     // Joystick base
     this.joyBase = scene.add.graphics().setScrollFactor(0).setDepth(100);
@@ -89,22 +90,22 @@ export class TouchControls {
     this.drawDirectionHints();
 
     // Nitro button below joystick
-    const nitroW = this.joyRadius * 2.2;
-    const nitroH = 44 * scaleFactor;
+    const nitroW = this.joyRadius * 2.4;
+    const nitroH = 60;
     const nitroX = this.joyBaseX;
-    const nitroY = h - 30;
+    const nitroY = h - SAFE_PAD + 20;
 
     this.nitroBg = scene.add.graphics().setScrollFactor(0).setDepth(100);
     this.drawNitroButton(nitroX, nitroY, nitroW, nitroH, false);
 
     this.nitroLabel = scene.add.text(nitroX, nitroY, "NITRO", {
-      fontSize: `${Math.round(14 * scaleFactor)}px`,
+      fontSize: "22px",
       color: "#ffffff",
       fontFamily: "Arial, sans-serif",
       fontStyle: "bold",
     }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
 
-    // Joystick zone (left 40% of screen, above nitro)
+    // Joystick zone (left half of screen, above nitro)
     const joyZone = scene.add.zone(w * 0.25, h * 0.35, w * 0.5, h * 0.7)
       .setOrigin(0.5, 0.5)
       .setScrollFactor(0)
@@ -120,7 +121,7 @@ export class TouchControls {
     });
 
     // Nitro zone
-    const nitroZone = scene.add.zone(nitroX, nitroY, nitroW + 20, nitroH + 20)
+    const nitroZone = scene.add.zone(nitroX, nitroY, nitroW + 30, nitroH + 30)
       .setScrollFactor(0).setDepth(99).setInteractive();
 
     nitroZone.on("pointerdown", () => {
@@ -141,25 +142,25 @@ export class TouchControls {
 
     // ── RIGHT SIDE: Item slots + USE button ──
 
-    this.createItemSlots(w, h, scaleFactor);
+    this.createItemSlots(w, h);
 
     // USE button at bottom-right
-    const useW = 80 * scaleFactor;
-    const useH = 50 * scaleFactor;
-    const useX = w - useW / 2 - 20;
-    const useY = h - 30;
+    const useW = 120;
+    const useH = 60;
+    const useX = w - SAFE_PAD;
+    const useY = h - SAFE_PAD + 20;
 
     this.useBg = scene.add.graphics().setScrollFactor(0).setDepth(100);
     this.drawUseButton(useX, useY, useW, useH, false);
 
     this.useLabel = scene.add.text(useX, useY, "USE", {
-      fontSize: `${Math.round(16 * scaleFactor)}px`,
+      fontSize: "24px",
       color: "#ffffff",
       fontFamily: "Arial, sans-serif",
       fontStyle: "bold",
     }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
 
-    const useZone = scene.add.zone(useX, useY, useW + 20, useH + 20)
+    const useZone = scene.add.zone(useX, useY, useW + 30, useH + 30)
       .setScrollFactor(0).setDepth(99).setInteractive();
 
     useZone.on("pointerdown", () => {
@@ -196,11 +197,11 @@ export class TouchControls {
     });
   }
 
-  private createItemSlots(w: number, h: number, scale: number) {
-    const slotSize = Math.max(40, Math.min(54, 48 * scale));
-    const gap = 8;
-    const startX = w - slotSize / 2 - 20;
-    const startY = 80; // below top HUD
+  private createItemSlots(w: number, h: number) {
+    const slotSize = 64;
+    const gap = 10;
+    const startX = w - SAFE_PAD;
+    const startY = 160; // below top HUD
 
     for (let i = 0; i < this.items.length; i++) {
       const y = startY + i * (slotSize + gap);
@@ -210,12 +211,12 @@ export class TouchControls {
       this.slotGraphics.push(g);
 
       const label = this.scene.add.text(startX, y, this.items[i].icon, {
-        fontSize: `${Math.round(slotSize * 0.55)}px`,
+        fontSize: "32px",
         fontFamily: "Arial, sans-serif",
       }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
       this.slotTexts.push(label);
 
-      const zone = this.scene.add.zone(startX, y, slotSize + 10, slotSize + 10)
+      const zone = this.scene.add.zone(startX, y, slotSize + 14, slotSize + 14)
         .setScrollFactor(0).setDepth(99).setInteractive();
       this.slotZones.push(zone);
 
@@ -228,7 +229,6 @@ export class TouchControls {
 
   private selectSlot(index: number) {
     if (this.selectedSlot === index) {
-      // Deselect
       this.selectedSlot = -1;
       this.input.selectedSlot = -1;
     } else {
@@ -240,11 +240,10 @@ export class TouchControls {
 
   private redrawSlots() {
     const w = this.scene.scale.width;
-    const scale = Math.min(w, this.scene.scale.height) / 600;
-    const slotSize = Math.max(40, Math.min(54, 48 * scale));
-    const startX = w - slotSize / 2 - 20;
-    const startY = 80;
-    const gap = 8;
+    const slotSize = 64;
+    const gap = 10;
+    const startX = w - SAFE_PAD;
+    const startY = 160;
 
     for (let i = 0; i < this.slotGraphics.length; i++) {
       const y = startY + i * (slotSize + gap);
@@ -256,9 +255,9 @@ export class TouchControls {
 
   private drawJoyBase() {
     this.joyBase.clear();
-    this.joyBase.lineStyle(3, 0x6666aa, 0.4);
+    this.joyBase.lineStyle(4, 0x6666aa, 0.5);
     this.joyBase.strokeCircle(this.joyBaseX, this.joyBaseY, this.joyRadius);
-    this.joyBase.fillStyle(0x333355, 0.3);
+    this.joyBase.fillStyle(0x333355, 0.35);
     this.joyBase.fillCircle(this.joyBaseX, this.joyBaseY, this.joyRadius);
   }
 
@@ -269,10 +268,10 @@ export class TouchControls {
     const r = this.joyRadius;
 
     g.fillStyle(0x8888bb, 0.3);
-    g.fillTriangle(cx - 6, cy - r + 18, cx + 6, cy - r + 18, cx, cy - r + 8);
-    g.fillTriangle(cx - 6, cy + r - 18, cx + 6, cy + r - 18, cx, cy + r - 8);
-    g.fillTriangle(cx - r + 18, cy - 6, cx - r + 18, cy + 6, cx - r + 8, cy);
-    g.fillTriangle(cx + r - 18, cy - 6, cx + r - 18, cy + 6, cx + r - 8, cy);
+    g.fillTriangle(cx - 8, cy - r + 22, cx + 8, cy - r + 22, cx, cy - r + 10);
+    g.fillTriangle(cx - 8, cy + r - 22, cx + 8, cy + r - 22, cx, cy + r - 10);
+    g.fillTriangle(cx - r + 22, cy - 8, cx - r + 22, cy + 8, cx - r + 10, cy);
+    g.fillTriangle(cx + r - 22, cy - 8, cx + r - 22, cy + 8, cx + r - 10, cy);
   }
 
   private drawJoyStick(x: number, y: number) {
@@ -292,14 +291,14 @@ export class TouchControls {
     const hh = h / 2;
     if (pressed) {
       this.nitroBg.fillStyle(0xffaa00, 0.9);
-      this.nitroBg.fillRoundedRect(x - hw, y - hh, w, h, 8);
+      this.nitroBg.fillRoundedRect(x - hw, y - hh, w, h, 10);
       this.nitroBg.lineStyle(3, 0xffdd44, 1);
     } else {
       this.nitroBg.fillStyle(0xff8800, 0.6);
-      this.nitroBg.fillRoundedRect(x - hw, y - hh, w, h, 8);
+      this.nitroBg.fillRoundedRect(x - hw, y - hh, w, h, 10);
       this.nitroBg.lineStyle(3, 0xffcc00, 0.7);
     }
-    this.nitroBg.strokeRoundedRect(x - hw, y - hh, w, h, 8);
+    this.nitroBg.strokeRoundedRect(x - hw, y - hh, w, h, 10);
   }
 
   private drawUseButton(x: number, y: number, w: number, h: number, pressed: boolean) {
@@ -308,14 +307,14 @@ export class TouchControls {
     const hh = h / 2;
     if (pressed) {
       this.useBg.fillStyle(0x22cc55, 0.9);
-      this.useBg.fillRoundedRect(x - hw, y - hh, w, h, 10);
+      this.useBg.fillRoundedRect(x - hw, y - hh, w, h, 12);
       this.useBg.lineStyle(3, 0x44ff77, 1);
     } else {
       this.useBg.fillStyle(0x229944, 0.6);
-      this.useBg.fillRoundedRect(x - hw, y - hh, w, h, 10);
+      this.useBg.fillRoundedRect(x - hw, y - hh, w, h, 12);
       this.useBg.lineStyle(3, 0x33cc55, 0.7);
     }
-    this.useBg.strokeRoundedRect(x - hw, y - hh, w, h, 10);
+    this.useBg.strokeRoundedRect(x - hw, y - hh, w, h, 12);
   }
 
   private drawSlot(g: Phaser.GameObjects.Graphics, x: number, y: number, size: number, selected: boolean) {
@@ -323,14 +322,14 @@ export class TouchControls {
     const hs = size / 2;
     if (selected) {
       g.fillStyle(0x44aa66, 0.8);
-      g.fillRoundedRect(x - hs, y - hs, size, size, 8);
+      g.fillRoundedRect(x - hs, y - hs, size, size, 10);
       g.lineStyle(3, 0x66ff88, 1);
     } else {
       g.fillStyle(0x333355, 0.6);
-      g.fillRoundedRect(x - hs, y - hs, size, size, 8);
+      g.fillRoundedRect(x - hs, y - hs, size, size, 10);
       g.lineStyle(2, 0x6666aa, 0.6);
     }
-    g.strokeRoundedRect(x - hs, y - hs, size, size, 8);
+    g.strokeRoundedRect(x - hs, y - hs, size, size, 10);
   }
 
   private updateJoystick(pointer: Phaser.Input.Pointer) {
