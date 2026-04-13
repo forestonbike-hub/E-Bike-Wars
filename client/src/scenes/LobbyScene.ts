@@ -18,12 +18,15 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   create() {
+    const sw = this.scale.width;
+    const sh = this.scale.height;
+
     // Background
-    this.add.graphics().fillStyle(0x1a1a2e, 1).fillRect(0, 0, 800, 600);
+    this.add.graphics().fillStyle(0x1a1a2e, 1).fillRect(0, 0, sw, sh);
 
     // Title
     this.add
-      .text(400, 30, "GAME LOBBY", {
+      .text(sw / 2, 30, "GAME LOBBY", {
         fontSize: "32px",
         color: "#e94560",
         fontFamily: "Arial, sans-serif",
@@ -82,11 +85,14 @@ export class LobbyScene extends Phaser.Scene {
     this.overlay.id = "lobby-overlay";
     this.overlay.style.cssText = `
       position: absolute;
-      top: 55%;
+      top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       width: 400px;
       max-width: 90vw;
+      max-height: 90vh;
+      max-height: 90dvh;
+      overflow-y: auto;
       font-family: Arial, sans-serif;
       color: #ffffff;
       z-index: 10;

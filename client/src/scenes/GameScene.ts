@@ -201,12 +201,24 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
+    // Handle screen resize (orientation change on tablets)
+    this.scale.on("resize", (gameSize: Phaser.Structs.Size) => {
+      const sw = gameSize.width;
+      const cx = sw / 2;
+      const hy = 10;
+      this.boostText.setX(cx);
+      this.healthHudText.setX(cx);
+      this.batteryHudText.setX(cx);
+      this.playerCountText.setX(sw - 16);
+    });
+
     this.events.on("shutdown", () => {
       socket.off("gameState");
       socket.off("playerLeft");
       socket.off("countdown");
       socket.off("gameOver");
       socket.off("returnToLobby");
+      this.scale.off("resize");
       if (this.winOverlay) { this.winOverlay.destroy(); this.winOverlay = null; }
       this.bikes.clear();
       this.projectileGraphics.forEach(g => g.destroy());
