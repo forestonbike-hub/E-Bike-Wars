@@ -1,14 +1,14 @@
 import Phaser from "phaser";
 import { getSocket } from "../network/SocketManager";
 import { TouchControls, isTouchDevice } from "../ui/TouchControls";
+import type { ActiveItem } from "../ui/TouchControls";
 import {
   BIKE_COLORS,
+  EQUIP_ITEMS,
   type GameState,
   type GamePlayerState,
-  type GameProjectile,
-  type GameMapHazard,
-  type GameDog,
   type PlayerInput,
+  type PlayerLoadout,
 } from "@shared/types";
 
 const ARENA_WIDTH = 1600;
@@ -16,7 +16,11 @@ const ARENA_HEIGHT = 1200;
 const WALL_THICKNESS = 20;
 const OBSTACLE_COLOR = 0x556677;
 
-// Represents a rendered bike on screen
+// Active items: items that need a USE action (not passive upgrades)
+const USABLE_ITEM_IDS = new Set([
+  "mop", "newspapers", "waterballoon", "nails", "dog", "teleporter", "trashlid",
+]);
+
 interface RenderedBike {
   container: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Graphics;
@@ -28,7 +32,6 @@ interface RenderedBike {
   healthBarFill: Phaser.GameObjects.Graphics;
   nameLabel: Phaser.GameObjects.Text;
   boostTrail: Phaser.GameObjects.Graphics;
-  // Interpolation targets
   targetX: number;
   targetY: number;
   targetHeading: number;
@@ -52,16 +55,22 @@ export class GameScene extends Phaser.Scene {
   private useTouch: boolean = false;
   private touchControls: TouchControls | null = null;
 
+  // Loadout: which usable items does this player have?
+  private usableItems: ActiveItem[] = [];
+  private selectedItemIndex: number = -1; // which slot is selected
+  private controlDiagram!: Phaser.GameObjects.Container;
+
+  // Desktop item slot visuals (bottom bar)
+  private slotGraphics: Phaser.GameObjects.Graphics[] = [];
+  private slotLabels: Phaser.GameObjects.Text[] = [];
+  private slotKeyLabels: Phaser.GameObjects.Text[] = [];
+
   // Keyboard
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private spaceKey!: Phaser.Input.Keyboard.Key;
-  private keyE!: Phaser.Input.Keyboard.Key;  // throw
-  private keyQ!: Phaser.Input.Keyboard.Key;  // drop nails
-  private keyR!: Phaser.Input.Keyboard.Key;  // dog
-  private keyF!: Phaser.Input.Keyboard.Key;  // mop toggle
-  private keyT!: Phaser.Input.Keyboard.Key;  // teleport
-  private keyG!: Phaser.Input.Keyboard.Key;  // shield
+  private keyE!: Phaser.Input.Keyboard.Key;   // USE
+  private numKeys: Phaser.Input.Keyboard.Key[] = [];
 
   // HUD
   private boostBar!: Phaser.GameObjects.Graphics;
@@ -71,23 +80,35 @@ export class GameScene extends Phaser.Scene {
   private healthHudFill!: Phaser.GameObjects.Graphics;
   private healthHudText!: Phaser.GameObjects.Text;
 
-  // Track own state for HUD
-  private myBoosting: boolean = false;
-  private myCrashed: boolean = false;
-  private myDead: boolean = false;
-  private mySpeed: number = 0;
-  private myHealth: number = 100;
-  private myMaxHealth: number = 100;
+  // Own state for HUD
+  private myBoosting = false;
+  private myCrashed = false;
+  private myDead = false;
+  private mySpeed = 0;
+  private myHealth = 100;
+  private myMaxHealth = 100;
 
-  // Track one-shot inputs (toggle once per press)
-  private mopJustPressed: boolean = false;
-  private teleportJustPressed: boolean = false;
-  private shieldJustPressed: boolean = false;
-  private dogJustPressed: boolean = false;
-  private nailJustPressed: boolean = false;
+  // One-shot tracking for USE key
+  private useJustPressed = false;
 
   constructor() {
     super({ key: "GameScene" });
+  }
+
+  init(data: { roomCode?: string; loadout?: PlayerLoadout }) {
+    // Build the list of usable items from the loadout
+    this.usableItems = [];
+    this.selectedItemIndex = -1;
+    if (data?.loadout?.itemIds) {
+      for (const id of data.loadout.itemIds) {
+        if (USABLE_ITEM_IDS.has(id)) {
+          const item = EQUIP_ITEMS.find(i => i.id === id);
+          if (item) {
+            this.usableItems.push({ id: item.id, icon: item.icon, name: item.name });
+          }
+        }
+      }
+    }
   }
 
   create() {
@@ -95,14 +116,12 @@ export class GameScene extends Phaser.Scene {
     const socket = getSocket();
     this.myId = socket.id || "";
 
-    // Set world bounds
     this.physics.world.setBounds(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
-    // Draw arena
     this.createArena();
     this.createObstacles();
 
-    // Set up keyboard input
+    // Keyboard setup
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
       this.wasd = {
@@ -113,40 +132,45 @@ export class GameScene extends Phaser.Scene {
       };
       this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
       this.keyE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-      this.keyQ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
-      this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-      this.keyF = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F);
-      this.keyT = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
-      this.keyG = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G);
+
+      // Number keys 1-7 for item selection
+      const codes = [
+        Phaser.Input.Keyboard.KeyCodes.ONE,
+        Phaser.Input.Keyboard.KeyCodes.TWO,
+        Phaser.Input.Keyboard.KeyCodes.THREE,
+        Phaser.Input.Keyboard.KeyCodes.FOUR,
+        Phaser.Input.Keyboard.KeyCodes.FIVE,
+        Phaser.Input.Keyboard.KeyCodes.SIX,
+        Phaser.Input.Keyboard.KeyCodes.SEVEN,
+      ];
+      this.numKeys = codes.map(c => this.input.keyboard!.addKey(c));
     }
 
     // Touch controls
     if (this.useTouch) {
-      this.touchControls = new TouchControls(this);
+      this.touchControls = new TouchControls(this, this.usableItems);
     }
 
-    // Camera setup
+    // Camera
     this.cameras.main.setZoom(1.2);
     this.cameras.main.setBounds(
-      -WALL_THICKNESS * 2,
-      -WALL_THICKNESS * 2,
-      ARENA_WIDTH + WALL_THICKNESS * 4,
-      ARENA_HEIGHT + WALL_THICKNESS * 4
+      -WALL_THICKNESS * 2, -WALL_THICKNESS * 2,
+      ARENA_WIDTH + WALL_THICKNESS * 4, ARENA_HEIGHT + WALL_THICKNESS * 4
     );
 
     // HUD
     this.createHUD();
 
-    // Listen for game state from server
-    socket.on("gameState", (state: GameState) => {
-      this.applyServerState(state);
-    });
+    // Desktop: item slots bar + control diagram at bottom
+    if (!this.useTouch) {
+      this.createDesktopItemBar();
+      this.createDesktopControlDiagram();
+    }
 
-    socket.on("playerLeft", (playerId: string) => {
-      this.removeBike(playerId);
-    });
+    // Network listeners
+    socket.on("gameState", (state: GameState) => this.applyServerState(state));
+    socket.on("playerLeft", (playerId: string) => this.removeBike(playerId));
 
-    // Clean up on scene shutdown
     this.events.on("shutdown", () => {
       socket.off("gameState");
       socket.off("playerLeft");
@@ -160,26 +184,19 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  // ── Arena drawing ──
+
   private createArena() {
-    // Floor
     const floor = this.add.graphics();
     floor.fillStyle(0x2a2a3e, 1);
     floor.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
-    // Grid lines
     const grid = this.add.graphics();
     grid.lineStyle(1, 0x3a3a4e, 0.3);
-    for (let x = 0; x <= ARENA_WIDTH; x += 80) {
-      grid.moveTo(x, 0);
-      grid.lineTo(x, ARENA_HEIGHT);
-    }
-    for (let y = 0; y <= ARENA_HEIGHT; y += 80) {
-      grid.moveTo(0, y);
-      grid.lineTo(ARENA_WIDTH, y);
-    }
+    for (let x = 0; x <= ARENA_WIDTH; x += 80) { grid.moveTo(x, 0); grid.lineTo(x, ARENA_HEIGHT); }
+    for (let y = 0; y <= ARENA_HEIGHT; y += 80) { grid.moveTo(0, y); grid.lineTo(ARENA_WIDTH, y); }
     grid.strokePath();
 
-    // Walls
     this.add.rectangle(ARENA_WIDTH / 2, WALL_THICKNESS / 2, ARENA_WIDTH, WALL_THICKNESS, 0x445566);
     this.add.rectangle(ARENA_WIDTH / 2, ARENA_HEIGHT - WALL_THICKNESS / 2, ARENA_WIDTH, WALL_THICKNESS, 0x445566);
     this.add.rectangle(WALL_THICKNESS / 2, ARENA_HEIGHT / 2, WALL_THICKNESS, ARENA_HEIGHT, 0x445566);
@@ -187,80 +204,148 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createObstacles() {
-    const obstacleLayouts = [
-      { x: 800, y: 600, w: 80, h: 80 },
-      { x: 300, y: 250, w: 60, h: 120 },
-      { x: 1300, y: 250, w: 60, h: 120 },
-      { x: 300, y: 900, w: 60, h: 120 },
-      { x: 1300, y: 900, w: 60, h: 120 },
-      { x: 600, y: 400, w: 120, h: 30 },
-      { x: 1000, y: 400, w: 120, h: 30 },
-      { x: 600, y: 800, w: 120, h: 30 },
-      { x: 1000, y: 800, w: 120, h: 30 },
-      { x: 500, y: 600, w: 30, h: 80 },
+    const layouts = [
+      { x: 800, y: 600, w: 80, h: 80 }, { x: 300, y: 250, w: 60, h: 120 },
+      { x: 1300, y: 250, w: 60, h: 120 }, { x: 300, y: 900, w: 60, h: 120 },
+      { x: 1300, y: 900, w: 60, h: 120 }, { x: 600, y: 400, w: 120, h: 30 },
+      { x: 1000, y: 400, w: 120, h: 30 }, { x: 600, y: 800, w: 120, h: 30 },
+      { x: 1000, y: 800, w: 120, h: 30 }, { x: 500, y: 600, w: 30, h: 80 },
       { x: 1100, y: 600, w: 30, h: 80 },
     ];
-
-    for (const obs of obstacleLayouts) {
-      const rect = this.add.rectangle(obs.x, obs.y, obs.w, obs.h, OBSTACLE_COLOR);
-      rect.setStrokeStyle(2, 0x667788);
+    for (const obs of layouts) {
+      this.add.rectangle(obs.x, obs.y, obs.w, obs.h, OBSTACLE_COLOR).setStrokeStyle(2, 0x667788);
     }
   }
 
+  // ── HUD ──
+
   private createHUD() {
-    // Boost bar
     this.boostBar = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.boostText = this.add.text(20, 42, "", {
-      fontSize: "14px",
-      color: "#ff8800",
-      fontFamily: "Arial, sans-serif",
-      fontStyle: "bold",
+      fontSize: "14px", color: "#ff8800", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setScrollFactor(0).setDepth(100);
 
-    // Health bar HUD (bottom left)
     this.healthHudBg = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.healthHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.healthHudText = this.add.text(20, 72, "HP: 100", {
-      fontSize: "14px",
-      color: "#44cc66",
-      fontFamily: "Arial, sans-serif",
-      fontStyle: "bold",
+      fontSize: "14px", color: "#44cc66", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setScrollFactor(0).setDepth(100);
 
-    // Player count
     this.playerCountText = this.add.text(this.scale.width - 20, 20, "", {
-      fontSize: "14px",
-      color: "#aabbcc",
-      fontFamily: "Arial, sans-serif",
-      align: "right",
+      fontSize: "14px", color: "#aabbcc", fontFamily: "Arial, sans-serif", align: "right",
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-
-    // Controls hint
-    const hint = this.add.text(
-      this.scale.width / 2,
-      this.scale.height - 30,
-      this.useTouch
-        ? "Joystick to drive  |  BOOST button"
-        : "WASD drive | SPACE nitro | E throw | Q nails | R dog | F mop | T teleport | G shield",
-      { fontSize: "11px", color: "#888899", fontFamily: "Arial, sans-serif" }
-    ).setOrigin(0.5).setScrollFactor(0).setDepth(100);
-
-    this.tweens.add({ targets: hint, alpha: 0, delay: 8000, duration: 1000 });
   }
 
-  private getOrCreateBike(playerState: GamePlayerState): RenderedBike {
-    let bike = this.bikes.get(playerState.id);
+  // ── Desktop: Item bar at bottom center ──
+
+  private createDesktopItemBar() {
+    if (this.usableItems.length === 0) return;
+
+    const sw = this.scale.width;
+    const sh = this.scale.height;
+    const slotSize = 48;
+    const gap = 6;
+    const totalW = this.usableItems.length * (slotSize + gap) - gap;
+    const startX = (sw - totalW) / 2;
+    const y = sh - 70;
+
+    for (let i = 0; i < this.usableItems.length; i++) {
+      const x = startX + i * (slotSize + gap) + slotSize / 2;
+
+      // Slot background
+      const g = this.add.graphics().setScrollFactor(0).setDepth(100);
+      this.drawDesktopSlot(g, x, y, slotSize, false);
+      this.slotGraphics.push(g);
+
+      // Item icon
+      const label = this.add.text(x, y, this.usableItems[i].icon, {
+        fontSize: "24px", fontFamily: "Arial, sans-serif",
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+      this.slotLabels.push(label);
+
+      // Key number label
+      const keyLabel = this.add.text(x - slotSize / 2 + 6, y - slotSize / 2 + 2, `${i + 1}`, {
+        fontSize: "10px", color: "#aabbcc", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+      }).setScrollFactor(0).setDepth(101);
+      this.slotKeyLabels.push(keyLabel);
+    }
+  }
+
+  private drawDesktopSlot(g: Phaser.GameObjects.Graphics, x: number, y: number, size: number, selected: boolean) {
+    g.clear();
+    const hs = size / 2;
+    if (selected) {
+      g.fillStyle(0x44aa66, 0.85);
+      g.fillRoundedRect(x - hs, y - hs, size, size, 8);
+      g.lineStyle(3, 0x66ff88, 1);
+    } else {
+      g.fillStyle(0x222244, 0.8);
+      g.fillRoundedRect(x - hs, y - hs, size, size, 8);
+      g.lineStyle(2, 0x555577, 0.8);
+    }
+    g.strokeRoundedRect(x - hs, y - hs, size, size, 8);
+  }
+
+  private updateDesktopSlotHighlights() {
+    const sw = this.scale.width;
+    const slotSize = 48;
+    const gap = 6;
+    const totalW = this.usableItems.length * (slotSize + gap) - gap;
+    const startX = (sw - totalW) / 2;
+    const y = this.scale.height - 70;
+
+    for (let i = 0; i < this.slotGraphics.length; i++) {
+      const x = startX + i * (slotSize + gap) + slotSize / 2;
+      this.drawDesktopSlot(this.slotGraphics[i], x, y, slotSize, i === this.selectedItemIndex);
+    }
+  }
+
+  // ── Desktop: Control diagram ──
+
+  private createDesktopControlDiagram() {
+    const sw = this.scale.width;
+    const sh = this.scale.height;
+    const container = this.add.container(0, 0).setScrollFactor(0).setDepth(100);
+
+    // Background bar
+    const bg = this.add.graphics();
+    bg.fillStyle(0x111122, 0.7);
+    bg.fillRoundedRect(10, sh - 28, sw - 20, 24, 6);
+    container.add(bg);
+
+    // Build help text based on what items the player has
+    let parts = ["WASD: Move", "SPACE: Nitro"];
+    if (this.usableItems.length > 0) {
+      parts.push("1-" + this.usableItems.length + ": Select Item");
+      parts.push("E: Use Item");
+    }
+    const helpStr = parts.join("    ");
+
+    const text = this.add.text(sw / 2, sh - 16, helpStr, {
+      fontSize: "11px", color: "#8899aa", fontFamily: "Arial, sans-serif",
+    }).setOrigin(0.5);
+    container.add(text);
+
+    this.controlDiagram = container;
+
+    // Fade after 12 seconds
+    this.tweens.add({ targets: container, alpha: 0.3, delay: 12000, duration: 2000 });
+  }
+
+  // ── Bike rendering ──
+
+  private getOrCreateBike(ps: GamePlayerState): RenderedBike {
+    let bike = this.bikes.get(ps.id);
     if (bike) return bike;
 
-    const container = this.add.container(playerState.x, playerState.y);
-    container.setDepth(10);
+    const container = this.add.container(ps.x, ps.y).setDepth(10);
+    const color = BIKE_COLORS[ps.colorIndex]?.value || 0x4488ff;
 
     const boostTrail = this.add.graphics();
     container.add(boostTrail);
 
-    // Normal bike body
+    // Normal body
     const body = this.add.graphics();
-    const color = BIKE_COLORS[playerState.colorIndex]?.value || 0x4488ff;
     body.fillStyle(color, 1);
     body.fillRoundedRect(-10, -18, 20, 36, 6);
     body.fillStyle(0xffffff, 0.9);
@@ -269,7 +354,7 @@ export class GameScene extends Phaser.Scene {
     body.strokeRoundedRect(-10, -18, 20, 36, 6);
     container.add(body);
 
-    // Crashed visual
+    // Crashed body
     const crashBody = this.add.graphics();
     crashBody.fillStyle(color, 0.7);
     crashBody.fillRoundedRect(-18, -8, 36, 16, 4);
@@ -291,29 +376,27 @@ export class GameScene extends Phaser.Scene {
     crashBody.setVisible(false);
     container.add(crashBody);
 
-    // Dead visual (X marks the spot)
+    // Dead body
     const deadBody = this.add.graphics();
     deadBody.fillStyle(0x333333, 0.5);
     deadBody.fillCircle(0, 0, 16);
     deadBody.lineStyle(3, 0xff2222, 0.8);
-    deadBody.moveTo(-8, -8);
-    deadBody.lineTo(8, 8);
-    deadBody.moveTo(8, -8);
-    deadBody.lineTo(-8, 8);
+    deadBody.moveTo(-8, -8); deadBody.lineTo(8, 8);
+    deadBody.moveTo(8, -8); deadBody.lineTo(-8, 8);
     deadBody.strokePath();
     deadBody.setVisible(false);
     container.add(deadBody);
 
-    // Mop graphic (extends in front of bike)
+    // Mop graphic
     const mopGraphic = this.add.graphics();
     mopGraphic.fillStyle(0x8B4513, 1);
-    mopGraphic.fillRect(-2, -68, 4, 50); // stick
+    mopGraphic.fillRect(-2, -68, 4, 50);
     mopGraphic.fillStyle(0xcccccc, 1);
-    mopGraphic.fillRect(-6, -72, 12, 8); // mop head
+    mopGraphic.fillRect(-6, -72, 12, 8);
     mopGraphic.setVisible(false);
     container.add(mopGraphic);
 
-    // Shield graphic (circle around bike)
+    // Shield graphic
     const shieldGraphic = this.add.graphics();
     shieldGraphic.lineStyle(3, 0x33bbff, 0.7);
     shieldGraphic.strokeCircle(0, 0, 22);
@@ -322,7 +405,7 @@ export class GameScene extends Phaser.Scene {
     shieldGraphic.setVisible(false);
     container.add(shieldGraphic);
 
-    // Health bar background (above name)
+    // Health bar bg
     const healthBarBg = this.add.graphics();
     healthBarBg.fillStyle(0x000000, 0.6);
     healthBarBg.fillRoundedRect(-20, -42, 40, 5, 2);
@@ -333,210 +416,155 @@ export class GameScene extends Phaser.Scene {
     container.add(healthBarFill);
 
     // Name label
-    const nameLabel = this.add.text(0, -50, playerState.name, {
-      fontSize: "12px",
-      color: "#ffffff",
-      fontFamily: "Arial, sans-serif",
-      fontStyle: "bold",
-      stroke: "#000000",
-      strokeThickness: 3,
+    const nameLabel = this.add.text(0, -50, ps.name, {
+      fontSize: "12px", color: "#ffffff", fontFamily: "Arial, sans-serif",
+      fontStyle: "bold", stroke: "#000000", strokeThickness: 3,
     }).setOrigin(0.5);
     container.add(nameLabel);
 
-    // Camera follows own bike
-    if (playerState.id === this.myId) {
+    if (ps.id === this.myId) {
       this.cameras.main.startFollow(container, true, 0.08, 0.08);
     }
 
     bike = {
-      container,
-      body,
-      crashBody,
-      deadBody,
-      mopGraphic,
-      shieldGraphic,
-      healthBarBg,
-      healthBarFill,
-      nameLabel,
-      boostTrail,
-      targetX: playerState.x,
-      targetY: playerState.y,
-      targetHeading: playerState.heading,
-      isBoosting: playerState.isBoosting,
-      isCrashed: playerState.isCrashed,
-      isDead: playerState.isDead,
-      mopExtended: playerState.mopExtended,
-      shieldActive: playerState.shieldActive,
-      health: playerState.health,
-      maxHealth: playerState.maxHealth,
-      speed: playerState.speed,
+      container, body, crashBody, deadBody, mopGraphic, shieldGraphic,
+      healthBarBg, healthBarFill, nameLabel, boostTrail,
+      targetX: ps.x, targetY: ps.y, targetHeading: ps.heading,
+      isBoosting: ps.isBoosting, isCrashed: ps.isCrashed, isDead: ps.isDead,
+      mopExtended: ps.mopExtended, shieldActive: ps.shieldActive,
+      health: ps.health, maxHealth: ps.maxHealth, speed: ps.speed,
     };
-
-    this.bikes.set(playerState.id, bike);
+    this.bikes.set(ps.id, bike);
     return bike;
   }
 
   private removeBike(playerId: string) {
     const bike = this.bikes.get(playerId);
-    if (bike) {
-      bike.container.destroy();
-      this.bikes.delete(playerId);
-    }
+    if (bike) { bike.container.destroy(); this.bikes.delete(playerId); }
   }
+
+  // ── Apply server state ──
 
   private applyServerState(state: GameState) {
     const activeIds = new Set<string>();
 
-    // Update bikes
-    for (const playerState of state.players) {
-      activeIds.add(playerState.id);
-      const bike = this.getOrCreateBike(playerState);
+    for (const ps of state.players) {
+      activeIds.add(ps.id);
+      const bike = this.getOrCreateBike(ps);
+      bike.targetX = ps.x;
+      bike.targetY = ps.y;
+      bike.targetHeading = ps.heading;
+      bike.isBoosting = ps.isBoosting;
+      bike.isCrashed = ps.isCrashed;
+      bike.isDead = ps.isDead;
+      bike.mopExtended = ps.mopExtended;
+      bike.shieldActive = ps.shieldActive;
+      bike.health = ps.health;
+      bike.maxHealth = ps.maxHealth;
+      bike.speed = ps.speed;
 
-      bike.targetX = playerState.x;
-      bike.targetY = playerState.y;
-      bike.targetHeading = playerState.heading;
-      bike.isBoosting = playerState.isBoosting;
-      bike.isCrashed = playerState.isCrashed;
-      bike.isDead = playerState.isDead;
-      bike.mopExtended = playerState.mopExtended;
-      bike.shieldActive = playerState.shieldActive;
-      bike.health = playerState.health;
-      bike.maxHealth = playerState.maxHealth;
-      bike.speed = playerState.speed;
-
-      if (playerState.id === this.myId) {
-        this.myBoosting = playerState.isBoosting;
-        this.myCrashed = playerState.isCrashed;
-        this.myDead = playerState.isDead;
-        this.mySpeed = playerState.speed;
-        this.myHealth = playerState.health;
-        this.myMaxHealth = playerState.maxHealth;
+      if (ps.id === this.myId) {
+        this.myBoosting = ps.isBoosting;
+        this.myCrashed = ps.isCrashed;
+        this.myDead = ps.isDead;
+        this.mySpeed = ps.speed;
+        this.myHealth = ps.health;
+        this.myMaxHealth = ps.maxHealth;
       }
     }
 
-    // Remove bikes no longer in state
     for (const [id] of this.bikes) {
       if (!activeIds.has(id)) this.removeBike(id);
     }
 
-    // Update projectiles
-    const activeProjectileIds = new Set<string>();
+    // Projectiles
+    const activeProjIds = new Set<string>();
     for (const proj of state.projectiles) {
-      activeProjectileIds.add(proj.id);
+      activeProjIds.add(proj.id);
       let g = this.projectileGraphics.get(proj.id);
-      if (!g) {
-        g = this.add.graphics().setDepth(8);
-        this.projectileGraphics.set(proj.id, g);
-      }
+      if (!g) { g = this.add.graphics().setDepth(8); this.projectileGraphics.set(proj.id, g); }
       g.clear();
       if (proj.type === "newspaper") {
-        g.fillStyle(0xeeeecc, 1);
-        g.fillRect(proj.x - 5, proj.y - 5, 10, 10);
-        g.lineStyle(1, 0x888866, 1);
-        g.strokeRect(proj.x - 5, proj.y - 5, 10, 10);
+        g.fillStyle(0xeeeecc, 1); g.fillRect(proj.x - 5, proj.y - 5, 10, 10);
+        g.lineStyle(1, 0x888866, 1); g.strokeRect(proj.x - 5, proj.y - 5, 10, 10);
       } else {
-        // Water balloon
-        g.fillStyle(0x3399ff, 0.8);
-        g.fillCircle(proj.x, proj.y, 6);
-        g.lineStyle(1, 0x1166cc, 1);
-        g.strokeCircle(proj.x, proj.y, 6);
+        g.fillStyle(0x3399ff, 0.8); g.fillCircle(proj.x, proj.y, 6);
+        g.lineStyle(1, 0x1166cc, 1); g.strokeCircle(proj.x, proj.y, 6);
       }
     }
-    // Remove old projectiles
     for (const [id, g] of this.projectileGraphics) {
-      if (!activeProjectileIds.has(id)) {
-        g.destroy();
-        this.projectileGraphics.delete(id);
-      }
+      if (!activeProjIds.has(id)) { g.destroy(); this.projectileGraphics.delete(id); }
     }
 
-    // Update hazards
-    const activeHazardIds = new Set<string>();
-    for (const hazard of state.hazards) {
-      activeHazardIds.add(hazard.id);
-      let g = this.hazardGraphics.get(hazard.id);
-      if (!g) {
-        g = this.add.graphics().setDepth(1);
-        this.hazardGraphics.set(hazard.id, g);
-      }
+    // Hazards
+    const activeHazIds = new Set<string>();
+    for (const h of state.hazards) {
+      activeHazIds.add(h.id);
+      let g = this.hazardGraphics.get(h.id);
+      if (!g) { g = this.add.graphics().setDepth(1); this.hazardGraphics.set(h.id, g); }
       g.clear();
-      if (hazard.type === "slick") {
-        g.fillStyle(0x3399ff, 0.25);
-        g.fillCircle(hazard.x, hazard.y, hazard.radius);
-        g.lineStyle(1, 0x3399ff, 0.4);
-        g.strokeCircle(hazard.x, hazard.y, hazard.radius);
+      if (h.type === "slick") {
+        g.fillStyle(0x3399ff, 0.25); g.fillCircle(h.x, h.y, h.radius);
+        g.lineStyle(1, 0x3399ff, 0.4); g.strokeCircle(h.x, h.y, h.radius);
       } else {
-        // Nails
-        g.fillStyle(0x888888, 0.5);
-        g.fillCircle(hazard.x, hazard.y, hazard.radius);
-        // Small dots to represent nails
+        g.fillStyle(0x888888, 0.5); g.fillCircle(h.x, h.y, h.radius);
         g.fillStyle(0xcccccc, 0.8);
         for (let a = 0; a < 6; a++) {
           const angle = (a / 6) * Math.PI * 2;
-          const r = hazard.radius * 0.6;
-          g.fillCircle(hazard.x + Math.cos(angle) * r, hazard.y + Math.sin(angle) * r, 2);
+          g.fillCircle(h.x + Math.cos(angle) * h.radius * 0.6, h.y + Math.sin(angle) * h.radius * 0.6, 2);
         }
       }
     }
     for (const [id, g] of this.hazardGraphics) {
-      if (!activeHazardIds.has(id)) {
-        g.destroy();
-        this.hazardGraphics.delete(id);
-      }
+      if (!activeHazIds.has(id)) { g.destroy(); this.hazardGraphics.delete(id); }
     }
 
-    // Update dogs
+    // Dogs
     const activeDogIds = new Set<string>();
     for (const dog of state.dogs) {
       activeDogIds.add(dog.id);
       let c = this.dogGraphics.get(dog.id);
       if (!c) {
         c = this.add.container(dog.x, dog.y).setDepth(9);
-        const dogBody = this.add.graphics();
-        // Simple dog shape: oval body + head
-        dogBody.fillStyle(0x8B4513, 1);
-        dogBody.fillEllipse(0, 0, 16, 10); // body
-        dogBody.fillCircle(0, -8, 5); // head
-        dogBody.fillStyle(0x000000, 1);
-        dogBody.fillCircle(-2, -10, 1.5); // eye
-        dogBody.fillCircle(2, -10, 1.5); // eye
-        c.add(dogBody);
+        const db = this.add.graphics();
+        db.fillStyle(0x8B4513, 1); db.fillEllipse(0, 0, 16, 10);
+        db.fillCircle(0, -8, 5);
+        db.fillStyle(0x000000, 1); db.fillCircle(-2, -10, 1.5); db.fillCircle(2, -10, 1.5);
+        c.add(db);
         this.dogGraphics.set(dog.id, c);
       }
-      c.x = dog.x;
-      c.y = dog.y;
-      c.rotation = dog.heading;
+      c.x = dog.x; c.y = dog.y; c.rotation = dog.heading;
     }
     for (const [id, c] of this.dogGraphics) {
-      if (!activeDogIds.has(id)) {
-        c.destroy();
-        this.dogGraphics.delete(id);
-      }
+      if (!activeDogIds.has(id)) { c.destroy(); this.dogGraphics.delete(id); }
     }
 
-    // Update player count (alive only)
     const alive = state.players.filter(p => !p.isDead).length;
     this.playerCountText.setText(`Alive: ${alive}/${state.players.length}`);
   }
 
+  // ── Main update loop ──
+
   update(_time: number, _delta: number) {
-    // Read input
     let turnInput = 0;
     let throttleInput = 0;
     let boostInput = false;
-    let throwInput = false;
-    let mopToggle = false;
-    let dropInput = false;
-    let dogInput = false;
-    let teleportInput = false;
-    let shieldInput = false;
+    let useItem = false;
 
+    // ── Touch input ──
     if (this.useTouch && this.touchControls) {
-      const touch = this.touchControls.getInput();
-      turnInput = touch.turnInput;
-      throttleInput = touch.throttleInput;
-      boostInput = touch.boostInput;
-    } else if (this.cursors) {
+      const ti = this.touchControls.getInput();
+      turnInput = ti.turnInput;
+      throttleInput = ti.throttleInput;
+      boostInput = ti.boostInput;
+      this.selectedItemIndex = ti.selectedSlot;
+      if (ti.useItem) {
+        useItem = true;
+        this.touchControls.clearUse();
+      }
+    }
+    // ── Desktop input ──
+    else if (this.cursors) {
       const left = this.cursors.left.isDown || this.wasd.A.isDown;
       const right = this.cursors.right.isDown || this.wasd.D.isDown;
       const up = this.cursors.up.isDown || this.wasd.W.isDown;
@@ -545,79 +573,69 @@ export class GameScene extends Phaser.Scene {
       turnInput = (left ? -1 : 0) + (right ? 1 : 0);
       throttleInput = (up ? 1 : 0) + (down ? -1 : 0);
       boostInput = this.spaceKey.isDown;
-      throwInput = this.keyE.isDown;
 
-      // One-shot inputs: only send true on the frame the key goes down
-      if (this.keyF.isDown && !this.mopJustPressed) {
-        mopToggle = true;
-        this.mopJustPressed = true;
-      } else if (!this.keyF.isDown) {
-        this.mopJustPressed = false;
+      // Number keys to select item slot
+      for (let i = 0; i < this.numKeys.length && i < this.usableItems.length; i++) {
+        if (Phaser.Input.Keyboard.JustDown(this.numKeys[i])) {
+          this.selectedItemIndex = (this.selectedItemIndex === i) ? -1 : i;
+          this.updateDesktopSlotHighlights();
+        }
       }
 
-      if (this.keyQ.isDown && !this.nailJustPressed) {
-        dropInput = true;
-        this.nailJustPressed = true;
-      } else if (!this.keyQ.isDown) {
-        this.nailJustPressed = false;
-      }
-
-      if (this.keyR.isDown && !this.dogJustPressed) {
-        dogInput = true;
-        this.dogJustPressed = true;
-      } else if (!this.keyR.isDown) {
-        this.dogJustPressed = false;
-      }
-
-      if (this.keyT.isDown && !this.teleportJustPressed) {
-        teleportInput = true;
-        this.teleportJustPressed = true;
-      } else if (!this.keyT.isDown) {
-        this.teleportJustPressed = false;
-      }
-
-      if (this.keyG.isDown && !this.shieldJustPressed) {
-        shieldInput = true;
-        this.shieldJustPressed = true;
-      } else if (!this.keyG.isDown) {
-        this.shieldJustPressed = false;
+      // E = USE (one-shot)
+      if (this.keyE.isDown && !this.useJustPressed) {
+        useItem = true;
+        this.useJustPressed = true;
+      } else if (!this.keyE.isDown) {
+        this.useJustPressed = false;
       }
     }
 
-    // Send input to server
-    const socket = getSocket();
+    // ── Map selected item + USE to server input flags ──
     const input: PlayerInput = {
       turnInput,
       throttleInput,
       boostInput,
       nitroInput: boostInput,
-      mopToggle,
-      throwInput,
-      dropInput,
-      dogInput,
-      teleportInput,
-      shieldInput,
+      mopToggle: false,
+      throwInput: false,
+      dropInput: false,
+      dogInput: false,
+      teleportInput: false,
+      shieldInput: false,
       seq: this.inputSeq++,
     };
-    socket.emit("playerInput", input);
 
-    // Interpolate all bikes
+    if (useItem && this.selectedItemIndex >= 0 && this.selectedItemIndex < this.usableItems.length) {
+      const itemId = this.usableItems[this.selectedItemIndex].id;
+      switch (itemId) {
+        case "mop": input.mopToggle = true; break;
+        case "newspapers": input.throwInput = true; input.throwItemId = "newspapers"; break;
+        case "waterballoon": input.throwInput = true; input.throwItemId = "waterballoon"; break;
+        case "nails": input.dropInput = true; break;
+        case "dog": input.dogInput = true; break;
+        case "teleporter": input.teleportInput = true; break;
+        case "trashlid": input.shieldInput = true; break;
+      }
+    }
+
+    getSocket().emit("playerInput", input);
+
+    // ── Interpolate bikes ──
     for (const bike of this.bikes.values()) {
-      const lerpSpeed = 0.25;
-      bike.container.x += (bike.targetX - bike.container.x) * lerpSpeed;
-      bike.container.y += (bike.targetY - bike.container.y) * lerpSpeed;
+      const lerp = 0.25;
+      bike.container.x += (bike.targetX - bike.container.x) * lerp;
+      bike.container.y += (bike.targetY - bike.container.y) * lerp;
 
-      let headingDiff = bike.targetHeading - bike.container.rotation;
-      while (headingDiff > Math.PI) headingDiff -= Math.PI * 2;
-      while (headingDiff < -Math.PI) headingDiff += Math.PI * 2;
-      bike.container.rotation += headingDiff * lerpSpeed;
+      let hd = bike.targetHeading - bike.container.rotation;
+      while (hd > Math.PI) hd -= Math.PI * 2;
+      while (hd < -Math.PI) hd += Math.PI * 2;
+      bike.container.rotation += hd * lerp;
 
-      // Keep name label and health bar upright
       bike.nameLabel.rotation = -bike.container.rotation;
       bike.healthBarBg.rotation = -bike.container.rotation;
       bike.healthBarFill.rotation = -bike.container.rotation;
 
-      // Toggle visuals based on state
       if (bike.isDead) {
         bike.body.setVisible(false);
         bike.crashBody.setVisible(false);
@@ -635,19 +653,18 @@ export class GameScene extends Phaser.Scene {
         bike.shieldGraphic.setVisible(bike.shieldActive);
         bike.healthBarBg.setVisible(true);
 
-        // Update health bar fill
+        // Health bar fill
         bike.healthBarFill.clear();
         const hpRatio = bike.health / bike.maxHealth;
-        const barWidth = 38 * hpRatio;
-        // Color: green > yellow > red
+        const barW = 38 * hpRatio;
         let hpColor = 0x44cc66;
         if (hpRatio < 0.3) hpColor = 0xff2222;
         else if (hpRatio < 0.6) hpColor = 0xffcc22;
         bike.healthBarFill.fillStyle(hpColor, 1);
-        bike.healthBarFill.fillRoundedRect(-19, -41, barWidth, 3, 1);
+        bike.healthBarFill.fillRoundedRect(-19, -41, barW, 3, 1);
         bike.healthBarFill.setVisible(true);
 
-        // Boost trail effect
+        // Boost trail
         bike.boostTrail.clear();
         if (bike.isBoosting) {
           bike.boostTrail.fillStyle(0xff8800, 0.6);
@@ -662,7 +679,6 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Update HUD
     this.updateHUD();
   }
 

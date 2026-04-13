@@ -418,6 +418,7 @@ export interface PlayerInput {
   nitroInput: boolean;    // nitro burst
   mopToggle: boolean;     // toggle mop on/off
   throwInput: boolean;    // fire newspapers / water balloon
+  throwItemId?: string;   // "newspapers" or "waterballoon" (which to throw)
   dropInput: boolean;     // drop nails
   dogInput: boolean;      // release dog
   teleportInput: boolean; // use teleporter

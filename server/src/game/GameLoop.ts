@@ -548,24 +548,27 @@ export class GameLoop {
         bike.input = { ...bike.input, teleportInput: false };
       }
 
-      // ── Throw newspapers ──
-      if (inp.throwInput && bike.stats.hasNewspapers && bike.newspaperCooldown <= 0 && bike.newspaperAmmo > 0) {
-        this.fireProjectile(bike, "newspaper");
-        bike.newspaperAmmo--;
-        const np = EQUIP_ITEMS.find(i => i.id === "newspapers")!;
-        bike.newspaperCooldown = np.params.cooldown ?? 800;
-        if (bike.newspaperAmmo <= 0) {
-          bike.newspaperRegenTimer = np.params.regenTime ?? 10000;
-        }
-      }
-      // Throw water balloon (also throwInput, but only if no newspapers OR newspapers on cooldown)
-      else if (inp.throwInput && bike.stats.hasWaterBalloon && bike.waterBalloonCooldown <= 0 && bike.waterBalloonAmmo > 0 && (!bike.stats.hasNewspapers || bike.newspaperAmmo <= 0)) {
-        this.fireProjectile(bike, "waterballoon");
-        bike.waterBalloonAmmo--;
-        const wb = EQUIP_ITEMS.find(i => i.id === "waterballoon")!;
-        bike.waterBalloonCooldown = wb.params.cooldown ?? 3000;
-        if (bike.waterBalloonAmmo <= 0) {
-          bike.waterBalloonRegenTimer = wb.params.regenTime ?? 15000;
+      // ── Throw projectile (client specifies which via throwItemId) ──
+      if (inp.throwInput) {
+        const wantNewspaper = inp.throwItemId === "newspapers" || !inp.throwItemId;
+        const wantBalloon = inp.throwItemId === "waterballoon";
+
+        if (wantNewspaper && bike.stats.hasNewspapers && bike.newspaperCooldown <= 0 && bike.newspaperAmmo > 0) {
+          this.fireProjectile(bike, "newspaper");
+          bike.newspaperAmmo--;
+          const np = EQUIP_ITEMS.find(i => i.id === "newspapers")!;
+          bike.newspaperCooldown = np.params.cooldown ?? 800;
+          if (bike.newspaperAmmo <= 0) {
+            bike.newspaperRegenTimer = np.params.regenTime ?? 10000;
+          }
+        } else if (wantBalloon && bike.stats.hasWaterBalloon && bike.waterBalloonCooldown <= 0 && bike.waterBalloonAmmo > 0) {
+          this.fireProjectile(bike, "waterballoon");
+          bike.waterBalloonAmmo--;
+          const wb = EQUIP_ITEMS.find(i => i.id === "waterballoon")!;
+          bike.waterBalloonCooldown = wb.params.cooldown ?? 3000;
+          if (bike.waterBalloonAmmo <= 0) {
+            bike.waterBalloonRegenTimer = wb.params.regenTime ?? 15000;
+          }
         }
       }
 
