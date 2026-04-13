@@ -19,15 +19,18 @@ export class HomeScene extends Phaser.Scene {
   }
 
   create() {
+    const sw = this.scale.width;
+    const sh = this.scale.height;
+
     // Background
     const graphics = this.add.graphics();
     graphics.fillStyle(0x1a1a2e, 1);
-    graphics.fillRect(0, 0, 1920, 1200);
+    graphics.fillRect(0, 0, sw, sh);
 
     // Title
     this.add
-      .text(960, 140, "E-BIKE WARS", {
-        fontSize: "72px",
+      .text(sw / 2, sh * 0.13, "E-BIKE WARS", {
+        fontSize: "52px",
         color: "#e94560",
         fontFamily: "Arial, sans-serif",
         fontStyle: "bold",
@@ -35,8 +38,8 @@ export class HomeScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(960, 220, "Arena Combat", {
-        fontSize: "28px",
+      .text(sw / 2, sh * 0.13 + 50, "Arena Combat", {
+        fontSize: "22px",
         color: "#aaaacc",
         fontFamily: "Arial, sans-serif",
       })
@@ -44,11 +47,11 @@ export class HomeScene extends Phaser.Scene {
 
     // Error text (hidden by default)
     this.errorText = this.add
-      .text(960, 1020, "", {
-        fontSize: "22px",
+      .text(sw / 2, sh * 0.85, "", {
+        fontSize: "16px",
         color: "#ff4444",
         fontFamily: "Arial, sans-serif",
-        wordWrap: { width: 500 },
+        wordWrap: { width: 400 },
         align: "center",
       })
       .setOrigin(0.5);

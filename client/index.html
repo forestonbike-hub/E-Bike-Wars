@@ -7,50 +7,42 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <title>E-Bike Wars</title>
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body {
         background: #1a1a2e;
         overflow: hidden;
-        width: 100%;
-        height: 100%;
-        height: 100dvh;
-        position: fixed;
-        top: 0;
-        left: 0;
         touch-action: none;
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
       }
-      canvas {
-        display: block;
+      #game-container {
+        position: absolute;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
       }
+      canvas { display: block; }
     </style>
   </head>
   <body>
-    <div id="loading" style="color: #e94560; font-family: Arial, sans-serif; font-size: 24px;">
-      Loading E-Bike Wars...
+    <div id="game-container">
+      <div id="loading" style="color: #e94560; font-family: Arial, sans-serif; font-size: 24px; text-align: center; padding-top: 40vh;">
+        Loading E-Bike Wars...
+      </div>
     </div>
     <script>
-      // Force body to match actual viewport (Kindle Silk doesn't support dvh)
-      function fixViewport() {
-        document.body.style.width = window.innerWidth + 'px';
-        document.body.style.height = window.innerHeight + 'px';
+      // Force container to exact viewport size (Kindle Silk workaround)
+      function fixSize() {
+        var c = document.getElementById('game-container');
+        c.style.width = window.innerWidth + 'px';
+        c.style.height = window.innerHeight + 'px';
       }
-      fixViewport();
-      window.addEventListener('resize', fixViewport);
-      window.addEventListener('orientationchange', function() {
-        setTimeout(fixViewport, 200);
-      });
+      fixSize();
+      window.addEventListener('resize', fixSize);
+      window.addEventListener('orientationchange', function() { setTimeout(fixSize, 300); });
     </script>
     <script type="module" src="/src/main.ts"></script>
     <script>
-      // If you can see "Loading E-Bike Wars..." but nothing else,
-      // check the browser console (F12) for errors
       window.addEventListener('error', function(e) {
         document.getElementById('loading').innerHTML =
           'Error: ' + e.message + '<br><small>' + e.filename + ':' + e.lineno + '</small>';

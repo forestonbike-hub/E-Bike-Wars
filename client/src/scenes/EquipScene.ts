@@ -30,7 +30,7 @@ export class EquipScene extends Phaser.Scene {
 
   create() {
     // Dark background
-    this.add.graphics().fillStyle(0x1a1a2e, 1).fillRect(0, 0, 1920, 1200);
+    this.add.graphics().fillStyle(0x1a1a2e, 1).fillRect(0, 0, this.scale.width, this.scale.height);
 
     this.createOverlay();
 

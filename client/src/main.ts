@@ -14,13 +14,12 @@ const roomCodeFromURL = pathMatch ? pathMatch[1].toUpperCase() : null;
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 1920,
-  height: 1200,
-  parent: document.body,
+  parent: "game-container",
   backgroundColor: "#1a1a2e",
   scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    mode: Phaser.Scale.RESIZE,
+    width: "100%",
+    height: "100%",
   },
   physics: {
     default: "arcade",

@@ -254,32 +254,29 @@ export class GameScene extends Phaser.Scene {
   // ── HUD ──
 
   private createHUD() {
-    // Center all HUD bars at the top-center of the screen
-    const sw = 1920;
-    const barW = 280;
+    const sw = this.scale.width;
     const cx = sw / 2;
-    const hy = 16;
+    const hy = 12;
 
     this.boostBar = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.boostText = this.add.text(cx, hy + 28, "", {
-      fontSize: "20px", color: "#ff8800", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+    this.boostText = this.add.text(cx, hy + 22, "", {
+      fontSize: "15px", color: "#ff8800", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
     this.healthHudBg = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.healthHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.healthHudText = this.add.text(cx, hy + 68, "HP: 100", {
-      fontSize: "20px", color: "#44cc66", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+    this.healthHudText = this.add.text(cx, hy + 48, "HP: 100", {
+      fontSize: "15px", color: "#44cc66", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
-    // Battery bar (below health bar)
     this.batteryHudBg = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.batteryHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.batteryHudText = this.add.text(cx, hy + 108, "Battery: 100%", {
-      fontSize: "20px", color: "#ff8833", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+    this.batteryHudText = this.add.text(cx, hy + 74, "Battery: 100%", {
+      fontSize: "15px", color: "#ff8833", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
-    this.playerCountText = this.add.text(sw - 24, hy, "", {
-      fontSize: "20px", color: "#aabbcc", fontFamily: "Arial, sans-serif", align: "right",
+    this.playerCountText = this.add.text(sw - 16, hy, "", {
+      fontSize: "15px", color: "#aabbcc", fontFamily: "Arial, sans-serif", align: "right",
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
   }
 
@@ -288,11 +285,13 @@ export class GameScene extends Phaser.Scene {
   private createDesktopItemBar() {
     if (this.usableItems.length === 0) return;
 
-    const slotSize = 64;
-    const gap = 10;
+    const sw = this.scale.width;
+    const sh = this.scale.height;
+    const slotSize = 48;
+    const gap = 6;
     const totalW = this.usableItems.length * (slotSize + gap) - gap;
-    const startX = (1920 - totalW) / 2;
-    const y = 1200 - 100;
+    const startX = (sw - totalW) / 2;
+    const y = sh - 70;
 
     for (let i = 0; i < this.usableItems.length; i++) {
       const x = startX + i * (slotSize + gap) + slotSize / 2;
@@ -304,13 +303,13 @@ export class GameScene extends Phaser.Scene {
 
       // Item icon
       const label = this.add.text(x, y, this.usableItems[i].icon, {
-        fontSize: "32px", fontFamily: "Arial, sans-serif",
+        fontSize: "24px", fontFamily: "Arial, sans-serif",
       }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
       this.slotLabels.push(label);
 
       // Key number label
-      const keyLabel = this.add.text(x - slotSize / 2 + 8, y - slotSize / 2 + 4, `${i + 1}`, {
-        fontSize: "14px", color: "#aabbcc", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+      const keyLabel = this.add.text(x - slotSize / 2 + 6, y - slotSize / 2 + 2, `${i + 1}`, {
+        fontSize: "10px", color: "#aabbcc", fontFamily: "Arial, sans-serif", fontStyle: "bold",
       }).setScrollFactor(0).setDepth(101);
       this.slotKeyLabels.push(keyLabel);
     }
@@ -332,11 +331,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateDesktopSlotHighlights() {
-    const slotSize = 64;
-    const gap = 10;
+    const slotSize = 48;
+    const gap = 6;
     const totalW = this.usableItems.length * (slotSize + gap) - gap;
-    const startX = (1920 - totalW) / 2;
-    const y = 1200 - 100;
+    const startX = (this.scale.width - totalW) / 2;
+    const y = this.scale.height - 70;
 
     for (let i = 0; i < this.slotGraphics.length; i++) {
       const x = startX + i * (slotSize + gap) + slotSize / 2;
@@ -347,15 +346,15 @@ export class GameScene extends Phaser.Scene {
   // ── Desktop: Control diagram ──
 
   private createDesktopControlDiagram() {
+    const sw = this.scale.width;
+    const sh = this.scale.height;
     const container = this.add.container(0, 0).setScrollFactor(0).setDepth(100);
 
-    // Background bar
     const bg = this.add.graphics();
     bg.fillStyle(0x111122, 0.7);
-    bg.fillRoundedRect(20, 1200 - 40, 1880, 32, 8);
+    bg.fillRoundedRect(10, sh - 28, sw - 20, 24, 6);
     container.add(bg);
 
-    // Build help text based on what items the player has
     let parts = ["WASD: Move", "SPACE: Nitro"];
     if (this.usableItems.length > 0) {
       parts.push("1-" + this.usableItems.length + ": Select Item");
@@ -363,8 +362,8 @@ export class GameScene extends Phaser.Scene {
     }
     const helpStr = parts.join("    ");
 
-    const text = this.add.text(960, 1200 - 24, helpStr, {
-      fontSize: "16px", color: "#8899aa", fontFamily: "Arial, sans-serif",
+    const text = this.add.text(sw / 2, sh - 16, helpStr, {
+      fontSize: "11px", color: "#8899aa", fontFamily: "Arial, sans-serif",
     }).setOrigin(0.5);
     container.add(text);
 
@@ -800,43 +799,50 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateHUD() {
-    const sw = 1920;
-    const barW = 280;
+    const sw = this.scale.width;
+    const barW = Math.min(200, sw * 0.2);
     const barX = (sw - barW) / 2;
-    const hy = 16;
+    const hy = 12;
 
     // Boost/status bar
     this.boostBar.clear();
     this.boostBar.fillStyle(0x333344, 0.8);
-    this.boostBar.fillRoundedRect(barX, hy, barW, 14, 6);
+    this.boostBar.fillRoundedRect(barX, hy, barW, 10, 4);
 
     if (this.myDead) {
       this.boostBar.fillStyle(0x555555, 1);
-      this.boostBar.fillRoundedRect(barX, hy, barW, 14, 6);
+      this.boostBar.fillRoundedRect(barX, hy, barW, 10, 4);
       this.boostText.setText("ELIMINATED");
       this.boostText.setColor("#888888");
     } else if (this.myCrashed) {
       this.boostBar.fillStyle(0xff2222, 1);
-      this.boostBar.fillRoundedRect(barX, hy, barW, 14, 6);
+      this.boostBar.fillRoundedRect(barX, hy, barW, 10, 4);
       this.boostText.setText("CRASHED!");
       this.boostText.setColor("#ff2222");
     } else if (this.myBoosting) {
       this.boostBar.fillStyle(0xffcc00, 1);
-      this.boostBar.fillRoundedRect(barX, hy, barW, 14, 6);
+      this.boostBar.fillRoundedRect(barX, hy, barW, 10, 4);
       this.boostText.setText("NITRO!");
       this.boostText.setColor("#ffcc00");
     } else {
       this.boostBar.fillStyle(0xff8800, 1);
-      this.boostBar.fillRoundedRect(barX, hy, barW, 14, 6);
+      this.boostBar.fillRoundedRect(barX, hy, barW, 10, 4);
       this.boostText.setText(this.useTouch ? "Nitro ready!" : "Nitro [SPACE]");
       this.boostText.setColor("#ff8800");
     }
+
+    // Reposition text to current center (handles resize)
+    const cx = sw / 2;
+    this.boostText.setX(cx);
+    this.healthHudText.setX(cx);
+    this.batteryHudText.setX(cx);
+    this.playerCountText.setX(sw - 16);
 
     // Health bar
     this.healthHudBg.clear();
     this.healthHudFill.clear();
     this.healthHudBg.fillStyle(0x333344, 0.8);
-    this.healthHudBg.fillRoundedRect(barX, hy + 50, barW, 16, 6);
+    this.healthHudBg.fillRoundedRect(barX, hy + 36, barW, 12, 4);
 
     const hpRatio = this.myHealth / this.myMaxHealth;
     let hpColor = 0x44cc66;
@@ -844,7 +850,7 @@ export class GameScene extends Phaser.Scene {
     else if (hpRatio < 0.6) hpColor = 0xffcc22;
 
     this.healthHudFill.fillStyle(hpColor, 1);
-    this.healthHudFill.fillRoundedRect(barX, hy + 50, barW * hpRatio, 16, 6);
+    this.healthHudFill.fillRoundedRect(barX, hy + 36, barW * hpRatio, 12, 4);
 
     this.healthHudText.setText(`HP: ${Math.ceil(this.myHealth)}`);
     if (hpRatio < 0.3) this.healthHudText.setColor("#ff2222");
@@ -855,14 +861,14 @@ export class GameScene extends Phaser.Scene {
     this.batteryHudBg.clear();
     this.batteryHudFill.clear();
     this.batteryHudBg.fillStyle(0x333344, 0.8);
-    this.batteryHudBg.fillRoundedRect(barX, hy + 90, barW, 16, 6);
+    this.batteryHudBg.fillRoundedRect(barX, hy + 62, barW, 12, 4);
 
     const batRatio = this.myBatteryPercent / 100;
     let batColor = 0xff8833;
     if (batRatio < 0.2) batColor = 0xff2222;
 
     this.batteryHudFill.fillStyle(batColor, 1);
-    this.batteryHudFill.fillRoundedRect(barX, hy + 90, barW * batRatio, 16, 6);
+    this.batteryHudFill.fillRoundedRect(barX, hy + 62, barW * batRatio, 12, 4);
 
     this.batteryHudText.setText(`Battery: ${Math.ceil(this.myBatteryPercent)}%`);
     if (batRatio < 0.2) this.batteryHudText.setColor("#ff2222");
@@ -875,12 +881,14 @@ export class GameScene extends Phaser.Scene {
       this.countdownText = null;
     }
 
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+
     if (count === 0) {
-      // GO!
       this.gameStarted = true;
-      const goText = this.add.text(960, 600, "GO!", {
-        fontSize: "120px", color: "#44cc66", fontFamily: "Arial, sans-serif",
-        fontStyle: "bold", stroke: "#000000", strokeThickness: 8,
+      const goText = this.add.text(cx, cy, "GO!", {
+        fontSize: "72px", color: "#44cc66", fontFamily: "Arial, sans-serif",
+        fontStyle: "bold", stroke: "#000000", strokeThickness: 6,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
       this.tweens.add({
         targets: goText, alpha: 0, scaleX: 2, scaleY: 2,
@@ -890,11 +898,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.countdownText = this.add.text(960, 600,
+    this.countdownText = this.add.text(cx, cy,
       `${count}`,
       {
-        fontSize: "160px", color: "#ffcc22", fontFamily: "Arial, sans-serif",
-        fontStyle: "bold", stroke: "#000000", strokeThickness: 8,
+        fontSize: "96px", color: "#ffcc22", fontFamily: "Arial, sans-serif",
+        fontStyle: "bold", stroke: "#000000", strokeThickness: 6,
       }
     ).setOrigin(0.5).setScrollFactor(0).setDepth(300);
 
@@ -911,22 +919,25 @@ export class GameScene extends Phaser.Scene {
 
     const container = this.add.container(0, 0).setScrollFactor(0).setDepth(200);
 
+    const sw = this.scale.width;
+    const sh = this.scale.height;
+
     // Semi-transparent backdrop
     const bg = this.add.graphics();
     bg.fillStyle(0x000000, 0.6);
-    bg.fillRect(0, 0, 1920, 1200);
+    bg.fillRect(0, 0, sw, sh);
     container.add(bg);
 
     // Winner announcement
     const title = isMe ? "YOU WIN!" : `${winnerName} WINS!`;
     const titleColor = isMe ? "#ffcc22" : "#ff4455";
-    const titleText = this.add.text(960, 560, title, {
+    const titleText = this.add.text(sw / 2, sh * 0.47, title, {
       fontSize: "72px", color: titleColor, fontFamily: "Arial, sans-serif",
       fontStyle: "bold", stroke: "#000000", strokeThickness: 6,
     }).setOrigin(0.5);
     container.add(titleText);
 
-    const subText = this.add.text(960, 650, "Returning to lobby...", {
+    const subText = this.add.text(sw / 2, sh * 0.47 + 90, "Returning to lobby...", {
       fontSize: "28px", color: "#aabbcc", fontFamily: "Arial, sans-serif",
     }).setOrigin(0.5);
     container.add(subText);

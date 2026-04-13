@@ -18,13 +18,16 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   create() {
+    const sw = this.scale.width;
+    const sh = this.scale.height;
+
     // Background
-    this.add.graphics().fillStyle(0x1a1a2e, 1).fillRect(0, 0, 1920, 1200);
+    this.add.graphics().fillStyle(0x1a1a2e, 1).fillRect(0, 0, sw, sh);
 
     // Title
     this.add
-      .text(960, 50, "GAME LOBBY", {
-        fontSize: "48px",
+      .text(sw / 2, 40, "GAME LOBBY", {
+        fontSize: "36px",
         color: "#e94560",
         fontFamily: "Arial, sans-serif",
         fontStyle: "bold",
