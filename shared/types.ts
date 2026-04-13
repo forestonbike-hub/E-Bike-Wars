@@ -456,6 +456,7 @@ export interface ServerToClientEvents {
   equipPhaseStarting: () => void;
   equipUpdate: (data: { playerId: string; loadout: PlayerLoadout; isReady: boolean }) => void;
   battleStarting: () => void;
+  countdown: (count: number) => void; // 3, 2, 1, 0 (0 = GO)
   gameOver: (data: { winnerId: string; winnerName: string }) => void;
   returnToLobby: () => void;
 }

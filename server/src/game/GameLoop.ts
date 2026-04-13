@@ -10,7 +10,9 @@ const ARENA_HEIGHT = 1200;
 const WALL_THICKNESS = 20;
 const BIKE_RADIUS = 14;
 const CRASH_DAMAGE = 15; // HP lost per crash
-const BATTERY_REGEN_RATE = 0.08; // % per second when stopped (recharges over ~12 sec)
+const WALL_CRASH_SPEED = 80; // speed threshold for wall/obstacle crash (was 150, too high)
+const BATTERY_DEAD_PERIOD = 10000; // ms before battery starts regenerating after hitting 0
+const BATTERY_REGEN_RATE = 0.167; // fraction per second (~3s from 0% to 50%)
 
 // Obstacle definitions (must match client GameScene)
 const OBSTACLES = [
@@ -85,6 +87,7 @@ interface ServerBike {
   // Battery / motor
   batteryRemaining: number; // ms remaining
   batteryActive: boolean;
+  batteryDeadTimer: number; // ms until regen starts after battery hits 0
 
   // Nitro
   isNitroing: boolean;
@@ -336,10 +339,19 @@ export class GameLoop {
 
   addPlayer(player: Player, itemIds: string[], isBot = false) {
     const count = this.bikes.size;
-    const angle = (count / 8) * Math.PI * 2;
-    const spawnRadius = 200;
-    const cx = ARENA_WIDTH / 2;
-    const cy = ARENA_HEIGHT / 2;
+    // Spawn positions along the arena edges, evenly spaced and facing inward
+    const SPAWN_MARGIN = 80; // distance from wall
+    const spawnPoints = [
+      { x: SPAWN_MARGIN, y: SPAWN_MARGIN, heading: Math.PI * 0.75 },                   // top-left, facing center
+      { x: ARENA_WIDTH - SPAWN_MARGIN, y: SPAWN_MARGIN, heading: Math.PI * 1.25 },      // top-right
+      { x: ARENA_WIDTH - SPAWN_MARGIN, y: ARENA_HEIGHT - SPAWN_MARGIN, heading: Math.PI * 1.75 }, // bottom-right
+      { x: SPAWN_MARGIN, y: ARENA_HEIGHT - SPAWN_MARGIN, heading: Math.PI * 0.25 },     // bottom-left
+      { x: ARENA_WIDTH / 2, y: SPAWN_MARGIN, heading: Math.PI },                         // top-center
+      { x: ARENA_WIDTH - SPAWN_MARGIN, y: ARENA_HEIGHT / 2, heading: Math.PI * 1.5 },   // right-center
+      { x: ARENA_WIDTH / 2, y: ARENA_HEIGHT - SPAWN_MARGIN, heading: 0 },                // bottom-center
+      { x: SPAWN_MARGIN, y: ARENA_HEIGHT / 2, heading: Math.PI * 0.5 },                  // left-center
+    ];
+    const sp = spawnPoints[count % spawnPoints.length];
 
     const stats = computeStats(itemIds);
 
@@ -353,9 +365,9 @@ export class GameLoop {
       isBot,
       name: player.name,
       colorIndex: player.colorIndex,
-      x: cx + Math.cos(angle) * spawnRadius,
-      y: cy + Math.sin(angle) * spawnRadius,
-      heading: angle + Math.PI,
+      x: sp.x,
+      y: sp.y,
+      heading: sp.heading,
       speed: 0,
       health: stats.health,
       maxHealth: stats.health,
@@ -366,6 +378,7 @@ export class GameLoop {
       // Battery
       batteryRemaining: stats.batteryDuration,
       batteryActive: true,
+      batteryDeadTimer: 0,
 
       // Nitro
       isNitroing: false,
@@ -450,6 +463,11 @@ export class GameLoop {
     bike.input.throwItemId = throwItemId;
   }
 
+  // Send state once (for countdown phase, before game loop starts)
+  broadcastOnce() {
+    this.broadcastState();
+  }
+
   // ── Start / stop ──
 
   start() {
@@ -525,20 +543,31 @@ export class GameLoop {
         }
       }
 
-      // Battery drain (drains while moving with motor assist)
+      // Battery drain (drains while motor is active and moving)
       if (bike.batteryActive && bike.speed > 0) {
         bike.batteryRemaining -= dtMs * bike.stats.batteryDrain;
         if (bike.batteryRemaining <= 0) {
           bike.batteryRemaining = 0;
           bike.batteryActive = false;
+          bike.batteryDeadTimer = BATTERY_DEAD_PERIOD; // 10 seconds before regen starts
         }
       }
-      // Battery regeneration when stopped or slow
-      if (!bike.batteryActive && bike.speed < 20) {
-        bike.batteryRemaining += bike.stats.batteryDuration * BATTERY_REGEN_RATE * dt;
-        if (bike.batteryRemaining >= bike.stats.batteryDuration) {
-          bike.batteryRemaining = bike.stats.batteryDuration;
-          bike.batteryActive = true;
+      // Battery regeneration: after dead period, auto-regen (even while moving)
+      if (!bike.batteryActive) {
+        if (bike.batteryDeadTimer > 0) {
+          // Waiting for dead period to expire
+          bike.batteryDeadTimer -= dtMs;
+        } else {
+          // Regen automatically (BATTERY_REGEN_RATE = 0.167/s, so ~3s to reach 50%)
+          bike.batteryRemaining += bike.stats.batteryDuration * BATTERY_REGEN_RATE * dt;
+          if (bike.batteryRemaining >= bike.stats.batteryDuration) {
+            bike.batteryRemaining = bike.stats.batteryDuration;
+          }
+          // Motor kicks back in at 50% battery
+          const pct = bike.batteryRemaining / bike.stats.batteryDuration;
+          if (pct >= 0.5) {
+            bike.batteryActive = true;
+          }
         }
       }
 
@@ -686,12 +715,11 @@ export class GameLoop {
       bike.x += Math.sin(bike.heading) * bike.speed * dt;
       bike.y -= Math.cos(bike.heading) * bike.speed * dt;
 
-      // Wall collisions (high-speed impacts cause crash + damage)
+      // Wall collisions (crash + damage above speed threshold, minor damage below)
       const minX = WALL_THICKNESS + BIKE_RADIUS;
       const maxX = ARENA_WIDTH - WALL_THICKNESS - BIKE_RADIUS;
       const minY = WALL_THICKNESS + BIKE_RADIUS;
       const maxY = ARENA_HEIGHT - WALL_THICKNESS - BIKE_RADIUS;
-      const WALL_CRASH_SPEED = 150; // speed threshold for wall crash
 
       let hitWall = false;
       if (bike.x < minX) { bike.x = minX; hitWall = true; }
@@ -699,14 +727,19 @@ export class GameLoop {
       if (bike.y < minY) { bike.y = minY; hitWall = true; }
       if (bike.y > maxY) { bike.y = maxY; hitWall = true; }
       if (hitWall) {
-        if (Math.abs(bike.speed) > WALL_CRASH_SPEED) {
+        const impactSpeed = Math.abs(bike.speed);
+        if (impactSpeed > WALL_CRASH_SPEED) {
           this.crashBike(bike, CRASH_DAMAGE);
+        } else if (impactSpeed > 30) {
+          // Minor wall bump: take some damage but don't crash
+          this.damageBike(bike, Math.round(impactSpeed / 20));
+          bike.speed *= -0.3;
         } else {
           bike.speed *= -0.3;
         }
       }
 
-      // Obstacle collisions (high-speed impacts cause crash + damage)
+      // Obstacle collisions (crash + damage above speed threshold, minor damage below)
       for (const obs of OBSTACLES) {
         const halfW = obs.w / 2 + BIKE_RADIUS;
         const halfH = obs.h / 2 + BIKE_RADIUS;
@@ -722,8 +755,12 @@ export class GameLoop {
           else if (min === oT) bike.y = obs.y - halfH;
           else bike.y = obs.y + halfH;
 
-          if (Math.abs(bike.speed) > WALL_CRASH_SPEED) {
+          const impactSpeed = Math.abs(bike.speed);
+          if (impactSpeed > WALL_CRASH_SPEED) {
             this.crashBike(bike, CRASH_DAMAGE);
+          } else if (impactSpeed > 30) {
+            this.damageBike(bike, Math.round(impactSpeed / 20));
+            bike.speed *= -0.3;
           } else {
             bike.speed *= -0.3;
           }
@@ -943,8 +980,36 @@ export class GameLoop {
         const ddy = nearest.y - dog.y;
         const dAngle = Math.atan2(ddx, -ddy);
         dog.heading = dAngle;
-        dog.x += Math.sin(dog.heading) * dog.speed * dt;
-        dog.y -= Math.cos(dog.heading) * dog.speed * dt;
+
+        const newX = dog.x + Math.sin(dog.heading) * dog.speed * dt;
+        const newY = dog.y - Math.cos(dog.heading) * dog.speed * dt;
+
+        // Wall collisions for dog
+        const dogR = 8;
+        const dMinX = WALL_THICKNESS + dogR;
+        const dMaxX = ARENA_WIDTH - WALL_THICKNESS - dogR;
+        const dMinY = WALL_THICKNESS + dogR;
+        const dMaxY = ARENA_HEIGHT - WALL_THICKNESS - dogR;
+        dog.x = Math.max(dMinX, Math.min(dMaxX, newX));
+        dog.y = Math.max(dMinY, Math.min(dMaxY, newY));
+
+        // Obstacle collisions for dog
+        for (const obs of OBSTACLES) {
+          const halfW = obs.w / 2 + dogR;
+          const halfH = obs.h / 2 + dogR;
+          if (dog.x > obs.x - halfW && dog.x < obs.x + halfW &&
+              dog.y > obs.y - halfH && dog.y < obs.y + halfH) {
+            const oL = dog.x - (obs.x - halfW);
+            const oR = (obs.x + halfW) - dog.x;
+            const oT = dog.y - (obs.y - halfH);
+            const oB = (obs.y + halfH) - dog.y;
+            const min = Math.min(oL, oR, oT, oB);
+            if (min === oL) dog.x = obs.x - halfW;
+            else if (min === oR) dog.x = obs.x + halfW;
+            else if (min === oT) dog.y = obs.y - halfH;
+            else dog.y = obs.y + halfH;
+          }
+        }
 
         // Catch check
         if (nearestDist < BIKE_RADIUS + 10) {
@@ -1158,7 +1223,7 @@ export class GameLoop {
         }
       }
 
-      // Default: drive forward
+      // Default inputs
       bike.input.throttleInput = 1;
       bike.input.turnInput = 0;
       bike.input.boostInput = false;
@@ -1170,8 +1235,91 @@ export class GameLoop {
       bike.input.teleportInput = false;
       bike.input.shieldInput = false;
 
-      if (nearestEnemy) {
-        // Steer toward enemy
+      // ── Wall and obstacle avoidance (highest priority) ──
+      // Cast a ray ahead to detect upcoming collisions
+      const lookAhead = 100; // pixels ahead to check
+      const futureX = bike.x + Math.sin(bike.heading) * lookAhead;
+      const futureY = bike.y - Math.cos(bike.heading) * lookAhead;
+      let wallDanger = false;
+      let wallTurnDir = 0; // which way to turn to avoid
+
+      // Check walls ahead
+      const wallMargin = 60;
+      const nearLeft = bike.x < WALL_THICKNESS + wallMargin;
+      const nearRight = bike.x > ARENA_WIDTH - WALL_THICKNESS - wallMargin;
+      const nearTop = bike.y < WALL_THICKNESS + wallMargin;
+      const nearBottom = bike.y > ARENA_HEIGHT - WALL_THICKNESS - wallMargin;
+
+      // If heading toward a wall we're near, strong avoidance
+      const headingSin = Math.sin(bike.heading); // positive = moving right
+      const headingCos = Math.cos(bike.heading); // positive = moving up (y decreases)
+
+      if (nearLeft && headingSin < -0.2) { wallDanger = true; wallTurnDir = 1; }
+      else if (nearRight && headingSin > 0.2) { wallDanger = true; wallTurnDir = -1; }
+      if (nearTop && headingCos > 0.2) { wallDanger = true; wallTurnDir += 1; }
+      else if (nearBottom && headingCos < -0.2) { wallDanger = true; wallTurnDir -= 1; }
+
+      // Check if future position is out of bounds
+      if (futureX < WALL_THICKNESS + 30 || futureX > ARENA_WIDTH - WALL_THICKNESS - 30 ||
+          futureY < WALL_THICKNESS + 30 || futureY > ARENA_HEIGHT - WALL_THICKNESS - 30) {
+        wallDanger = true;
+        if (wallTurnDir === 0) wallTurnDir = (Math.random() > 0.5) ? 1 : -1;
+      }
+
+      // Check obstacles ahead
+      let obstacleDanger = false;
+      for (const obs of OBSTACLES) {
+        const halfW = obs.w / 2 + BIKE_RADIUS + 20;
+        const halfH = obs.h / 2 + BIKE_RADIUS + 20;
+        // Check if future position hits obstacle
+        if (futureX > obs.x - halfW && futureX < obs.x + halfW &&
+            futureY > obs.y - halfH && futureY < obs.y + halfH) {
+          obstacleDanger = true;
+          // Turn away from obstacle center
+          const obsDx = bike.x - obs.x;
+          const obsDy = bike.y - obs.y;
+          const obsAngle = Math.atan2(obsDx, -obsDy);
+          let obsDiff = obsAngle - bike.heading;
+          while (obsDiff > Math.PI) obsDiff -= Math.PI * 2;
+          while (obsDiff < -Math.PI) obsDiff += Math.PI * 2;
+          wallTurnDir = obsDiff > 0 ? 1 : -1;
+          break;
+        }
+        // Also check current close proximity (stuck against obstacle)
+        const closeW = obs.w / 2 + BIKE_RADIUS + 5;
+        const closeH = obs.h / 2 + BIKE_RADIUS + 5;
+        if (bike.x > obs.x - closeW && bike.x < obs.x + closeW &&
+            bike.y > obs.y - closeH && bike.y < obs.y + closeH) {
+          obstacleDanger = true;
+          const obsDx = bike.x - obs.x;
+          const obsDy = bike.y - obs.y;
+          const obsAngle = Math.atan2(obsDx, -obsDy);
+          let obsDiff = obsAngle - bike.heading;
+          while (obsDiff > Math.PI) obsDiff -= Math.PI * 2;
+          while (obsDiff < -Math.PI) obsDiff += Math.PI * 2;
+          wallTurnDir = obsDiff > 0 ? 1 : -1;
+          break;
+        }
+      }
+
+      // If stuck (speed very low but throttle is on), back up and turn
+      const isStuck = Math.abs(bike.speed) < 15 && bike.input.throttleInput > 0;
+      if (isStuck) {
+        bike.input.throttleInput = -1; // reverse
+        bike.input.turnInput = (Math.random() > 0.5) ? 1 : -1; // turn while backing up
+        // Skip enemy pursuit when stuck
+        continue;
+      }
+
+      // Apply wall/obstacle avoidance
+      if (wallDanger || obstacleDanger) {
+        bike.input.turnInput = Math.max(-1, Math.min(1, wallTurnDir));
+        // Slow down when near obstacles
+        if (obstacleDanger) {
+          bike.input.throttleInput = 0.5;
+        }
+      } else if (nearestEnemy) {
+        // ��─ Chase enemy (only if not avoiding walls) ──
         const dx = nearestEnemy.x - bike.x;
         const dy = nearestEnemy.y - bike.y;
         const angleToEnemy = Math.atan2(dx, -dy);
@@ -1179,23 +1327,20 @@ export class GameLoop {
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-        // Steer toward enemy with some smoothing
-        if (angleDiff > 0.15) bike.input.turnInput = 1;
-        else if (angleDiff < -0.15) bike.input.turnInput = -1;
+        if (angleDiff > 0.1) bike.input.turnInput = 1;
+        else if (angleDiff < -0.1) bike.input.turnInput = -1;
         else bike.input.turnInput = 0;
 
-        // Use nitro when close-ish to enemy and facing them
+        // Use nitro when facing enemy and somewhat close
         if (nearestDist < 400 && Math.abs(angleDiff) < 0.5) {
           bike.input.nitroInput = true;
         }
 
-        // Use weapons based on distance
+        // ── Weapon usage ──
         if (nearestDist < 250) {
-          // Close range: extend mop if we have it
           if (bike.stats.hasMop && !bike.mopExtended && Math.abs(angleDiff) < 0.4) {
             bike.input.mopToggle = true;
           }
-          // Throw newspapers/balloons at close range
           if (bike.stats.hasNewspapers && bike.newspaperAmmo > 0 && Math.abs(angleDiff) < 0.3) {
             bike.input.throwInput = true;
             bike.input.throwItemId = "newspapers";
@@ -1204,47 +1349,36 @@ export class GameLoop {
             bike.input.throwItemId = "waterballoon";
           }
         } else if (nearestDist > 300) {
-          // Retract mop when far from enemies
-          if (bike.mopExtended) {
-            bike.input.mopToggle = true;
-          }
+          if (bike.mopExtended) bike.input.mopToggle = true;
         }
 
-        // Drop nails when enemy is behind us (chasing us)
+        // Drop nails when enemy is chasing us (behind)
         if (bike.stats.hasNails && bike.nailAmmo > 0) {
-          const enemyBehind = Math.abs(angleDiff) > 2.5; // roughly behind
-          if (enemyBehind && nearestDist < 200) {
+          if (Math.abs(angleDiff) > 2.5 && nearestDist < 200) {
             bike.input.dropInput = true;
           }
         }
 
-        // Release dog when enemy is nearby
+        // Release dog when enemy is in range
         if (bike.stats.hasDog && !bike.dogActive && bike.dogCooldown <= 0 && nearestDist < 350) {
           bike.input.dogInput = true;
         }
 
-        // Teleport to dodge when low health
+        // Teleport when low health and enemy is very close
         if (bike.stats.hasTeleporter && bike.teleportUsesLeft > 0 && bike.health < 30 && nearestDist < 100) {
           bike.input.teleportInput = true;
         }
 
-        // Shield when enemy is very close and we're low health
+        // Shield when threatened and low HP
         if (bike.stats.hasTrashLid && bike.shieldUsesLeft > 0 && !bike.shieldActive && bike.health < 40 && nearestDist < 150) {
           bike.input.shieldInput = true;
         }
       }
 
-      // Wall avoidance: steer away from walls
-      const wallMargin = 80;
-      if (bike.x < WALL_THICKNESS + wallMargin) bike.input.turnInput += 0.5;
-      if (bike.x > ARENA_WIDTH - WALL_THICKNESS - wallMargin) bike.input.turnInput -= 0.5;
-      if (bike.y < WALL_THICKNESS + wallMargin) bike.input.turnInput += 0.3;
-      if (bike.y > ARENA_HEIGHT - WALL_THICKNESS - wallMargin) bike.input.turnInput -= 0.3;
-      bike.input.turnInput = Math.max(-1, Math.min(1, bike.input.turnInput));
-
-      // Add slight randomness to make bots less predictable
-      if (Math.random() < 0.02) {
-        bike.input.turnInput += (Math.random() - 0.5) * 0.5;
+      // Small randomness for unpredictability
+      if (Math.random() < 0.03) {
+        bike.input.turnInput += (Math.random() - 0.5) * 0.3;
+        bike.input.turnInput = Math.max(-1, Math.min(1, bike.input.turnInput));
       }
     }
   }

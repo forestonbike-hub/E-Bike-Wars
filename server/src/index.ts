@@ -319,7 +319,6 @@ io.on("connection", (socket) => {
       }
 
       activeGames.set(roomCode, gameLoop);
-      gameLoop.start();
 
       // Clean up equip state
       equipStates.delete(roomCode);
@@ -327,6 +326,18 @@ io.on("connection", (socket) => {
       console.log(`[equipReady] Battle starting in ${roomCode} with ${roomInfo.players.length} players`);
       io.to(roomCode).emit("battleStarting");
       broadcastRoomUpdate(roomCode);
+
+      // Broadcast initial positions (no movement yet) so clients see bikes during countdown
+      gameLoop.broadcastOnce();
+
+      // 3-2-1 countdown, then start the game loop
+      io.to(roomCode).emit("countdown", 3);
+      setTimeout(() => io.to(roomCode).emit("countdown", 2), 1000);
+      setTimeout(() => io.to(roomCode).emit("countdown", 1), 2000);
+      setTimeout(() => {
+        io.to(roomCode).emit("countdown", 0); // GO!
+        gameLoop.start();
+      }, 3000);
     }
   });
 

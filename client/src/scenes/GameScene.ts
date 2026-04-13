@@ -87,6 +87,8 @@ export class GameScene extends Phaser.Scene {
 
   // Win overlay
   private winOverlay: Phaser.GameObjects.Container | null = null;
+  private countdownText: Phaser.GameObjects.Text | null = null;
+  private gameStarted: boolean = false;
   private roomCode: string = "";
   private playerName: string = "";
 
@@ -184,6 +186,10 @@ export class GameScene extends Phaser.Scene {
     socket.on("gameState", (state: GameState) => this.applyServerState(state));
     socket.on("playerLeft", (playerId: string) => this.removeBike(playerId));
 
+    socket.on("countdown", (count: number) => {
+      this.showCountdown(count);
+    });
+
     socket.on("gameOver", (data: { winnerId: string; winnerName: string }) => {
       this.showWinOverlay(data.winnerName, data.winnerId === this.myId);
     });
@@ -198,6 +204,7 @@ export class GameScene extends Phaser.Scene {
     this.events.on("shutdown", () => {
       socket.off("gameState");
       socket.off("playerLeft");
+      socket.off("countdown");
       socket.off("gameOver");
       socket.off("returnToLobby");
       if (this.winOverlay) { this.winOverlay.destroy(); this.winOverlay = null; }
@@ -247,26 +254,31 @@ export class GameScene extends Phaser.Scene {
   // ── HUD ──
 
   private createHUD() {
+    // HUD positions account for camera zoom (1.2x) which shifts viewport origin
+    // Use generous padding so bars aren't clipped on any screen
+    const hx = 16; // HUD left margin
+    const hy = 16; // HUD top margin
+
     this.boostBar = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.boostText = this.add.text(20, 42, "", {
-      fontSize: "14px", color: "#ff8800", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+    this.boostText = this.add.text(hx, hy + 18, "", {
+      fontSize: "13px", color: "#ff8800", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setScrollFactor(0).setDepth(100);
 
     this.healthHudBg = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.healthHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.healthHudText = this.add.text(20, 72, "HP: 100", {
-      fontSize: "14px", color: "#44cc66", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+    this.healthHudText = this.add.text(hx, hy + 44, "HP: 100", {
+      fontSize: "13px", color: "#44cc66", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setScrollFactor(0).setDepth(100);
 
     // Battery bar (below health bar)
     this.batteryHudBg = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.batteryHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.batteryHudText = this.add.text(20, 102, "Battery: 100%", {
-      fontSize: "14px", color: "#ff8833", fontFamily: "Arial, sans-serif", fontStyle: "bold",
+    this.batteryHudText = this.add.text(hx, hy + 70, "Battery: 100%", {
+      fontSize: "13px", color: "#ff8833", fontFamily: "Arial, sans-serif", fontStyle: "bold",
     }).setScrollFactor(0).setDepth(100);
 
-    this.playerCountText = this.add.text(this.scale.width - 20, 20, "", {
-      fontSize: "14px", color: "#aabbcc", fontFamily: "Arial, sans-serif", align: "right",
+    this.playerCountText = this.add.text(this.scale.width - 16, hy, "", {
+      fontSize: "13px", color: "#aabbcc", fontFamily: "Arial, sans-serif", align: "right",
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
   }
 
@@ -581,6 +593,13 @@ export class GameScene extends Phaser.Scene {
   // ── Main update loop ──
 
   update(_time: number, _delta: number) {
+    // During countdown, only interpolate bikes and update HUD (no input)
+    if (!this.gameStarted) {
+      this.interpolateBikes();
+      this.updateHUD();
+      return;
+    }
+
     let turnInput = 0;
     let throttleInput = 0;
     let boostInput = false;
@@ -656,7 +675,11 @@ export class GameScene extends Phaser.Scene {
 
     getSocket().emit("playerInput", input);
 
-    // ── Interpolate bikes ──
+    this.interpolateBikes();
+    this.updateHUD();
+  }
+
+  private interpolateBikes() {
     for (const bike of this.bikes.values()) {
       const lerp = 0.25;
       bike.container.x += (bike.targetX - bike.container.x) * lerp;
@@ -713,34 +736,35 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
-
-    this.updateHUD();
   }
 
   private updateHUD() {
+    const hx = 16;
+    const hy = 16;
+
     // Boost bar
     this.boostBar.clear();
     this.boostBar.fillStyle(0x333344, 0.8);
-    this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+    this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
 
     if (this.myDead) {
       this.boostBar.fillStyle(0x555555, 1);
-      this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+      this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
       this.boostText.setText("ELIMINATED");
       this.boostText.setColor("#888888");
     } else if (this.myCrashed) {
       this.boostBar.fillStyle(0xff2222, 1);
-      this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+      this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
       this.boostText.setText("CRASHED!");
       this.boostText.setColor("#ff2222");
     } else if (this.myBoosting) {
       this.boostBar.fillStyle(0xffcc00, 1);
-      this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+      this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
       this.boostText.setText("NITRO!");
       this.boostText.setColor("#ffcc00");
     } else {
       this.boostBar.fillStyle(0xff8800, 1);
-      this.boostBar.fillRoundedRect(20, 20, 120, 8, 4);
+      this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
       this.boostText.setText(this.useTouch ? "Nitro ready!" : "Nitro [SPACE]");
       this.boostText.setColor("#ff8800");
     }
@@ -749,7 +773,7 @@ export class GameScene extends Phaser.Scene {
     this.healthHudBg.clear();
     this.healthHudFill.clear();
     this.healthHudBg.fillStyle(0x333344, 0.8);
-    this.healthHudBg.fillRoundedRect(20, 56, 120, 10, 4);
+    this.healthHudBg.fillRoundedRect(hx, hy + 28, 110, 10, 4);
 
     const hpRatio = this.myHealth / this.myMaxHealth;
     let hpColor = 0x44cc66;
@@ -757,7 +781,7 @@ export class GameScene extends Phaser.Scene {
     else if (hpRatio < 0.6) hpColor = 0xffcc22;
 
     this.healthHudFill.fillStyle(hpColor, 1);
-    this.healthHudFill.fillRoundedRect(20, 56, 120 * hpRatio, 10, 4);
+    this.healthHudFill.fillRoundedRect(hx, hy + 28, 110 * hpRatio, 10, 4);
 
     this.healthHudText.setText(`HP: ${Math.ceil(this.myHealth)}`);
     if (hpRatio < 0.3) this.healthHudText.setColor("#ff2222");
@@ -768,18 +792,56 @@ export class GameScene extends Phaser.Scene {
     this.batteryHudBg.clear();
     this.batteryHudFill.clear();
     this.batteryHudBg.fillStyle(0x333344, 0.8);
-    this.batteryHudBg.fillRoundedRect(20, 86, 120, 10, 4);
+    this.batteryHudBg.fillRoundedRect(hx, hy + 56, 110, 10, 4);
 
     const batRatio = this.myBatteryPercent / 100;
-    let batColor = 0xff8833; // orange
-    if (batRatio < 0.2) batColor = 0xff2222; // red when very low
+    let batColor = 0xff8833;
+    if (batRatio < 0.2) batColor = 0xff2222;
 
     this.batteryHudFill.fillStyle(batColor, 1);
-    this.batteryHudFill.fillRoundedRect(20, 86, 120 * batRatio, 10, 4);
+    this.batteryHudFill.fillRoundedRect(hx, hy + 56, 110 * batRatio, 10, 4);
 
     this.batteryHudText.setText(`Battery: ${Math.ceil(this.myBatteryPercent)}%`);
     if (batRatio < 0.2) this.batteryHudText.setColor("#ff2222");
     else this.batteryHudText.setColor("#ff8833");
+  }
+
+  private showCountdown(count: number) {
+    if (this.countdownText) {
+      this.countdownText.destroy();
+      this.countdownText = null;
+    }
+
+    if (count === 0) {
+      // GO!
+      this.gameStarted = true;
+      const goText = this.add.text(this.scale.width / 2, this.scale.height / 2, "GO!", {
+        fontSize: "72px", color: "#44cc66", fontFamily: "Arial, sans-serif",
+        fontStyle: "bold", stroke: "#000000", strokeThickness: 6,
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+      this.tweens.add({
+        targets: goText, alpha: 0, scaleX: 2, scaleY: 2,
+        duration: 800, ease: "Power2",
+        onComplete: () => goText.destroy(),
+      });
+      return;
+    }
+
+    this.countdownText = this.add.text(
+      this.scale.width / 2, this.scale.height / 2,
+      `${count}`,
+      {
+        fontSize: "96px", color: "#ffcc22", fontFamily: "Arial, sans-serif",
+        fontStyle: "bold", stroke: "#000000", strokeThickness: 6,
+      }
+    ).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+
+    // Pulse animation
+    this.tweens.add({
+      targets: this.countdownText,
+      scaleX: 0.6, scaleY: 0.6, alpha: 0.5,
+      duration: 800, ease: "Power2",
+    });
   }
 
   private showWinOverlay(winnerName: string, isMe: boolean) {
