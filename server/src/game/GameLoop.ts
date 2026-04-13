@@ -9,7 +9,7 @@ const ARENA_WIDTH = 1600;
 const ARENA_HEIGHT = 1200;
 const WALL_THICKNESS = 20;
 const BIKE_RADIUS = 14;
-const CRASH_DAMAGE = 10; // HP lost per crash
+const CRASH_DAMAGE = 15; // HP lost per crash
 
 // Obstacle definitions (must match client GameScene)
 const OBSTACLES = [
@@ -162,6 +162,8 @@ interface ServerHazard {
   y: number;
   radius: number;
   remainingMs: number;
+  ownerId?: string;     // who dropped it (immune briefly)
+  immuneUntilMs?: number; // owner is immune until this many ms remain
 }
 
 // ── Dog chasing players ──
@@ -420,7 +422,23 @@ export class GameLoop {
   handleInput(playerId: string, input: PlayerInput) {
     const bike = this.bikes.get(playerId);
     if (!bike) return;
+    // Accumulate one-shot flags so rapid input packets don't overwrite
+    // a true flag before the physics tick reads it
+    const mopToggle = bike.input.mopToggle || input.mopToggle;
+    const shieldInput = bike.input.shieldInput || input.shieldInput;
+    const dropInput = bike.input.dropInput || input.dropInput;
+    const dogInput = bike.input.dogInput || input.dogInput;
+    const teleportInput = bike.input.teleportInput || input.teleportInput;
+    const throwInput = bike.input.throwInput || input.throwInput;
+    const throwItemId = input.throwItemId || bike.input.throwItemId;
     bike.input = input;
+    bike.input.mopToggle = mopToggle;
+    bike.input.shieldInput = shieldInput;
+    bike.input.dropInput = dropInput;
+    bike.input.dogInput = dogInput;
+    bike.input.teleportInput = teleportInput;
+    bike.input.throwInput = throwInput;
+    bike.input.throwItemId = throwItemId;
   }
 
   // ── Start / stop ──
@@ -649,18 +667,27 @@ export class GameLoop {
       bike.x += Math.sin(bike.heading) * bike.speed * dt;
       bike.y -= Math.cos(bike.heading) * bike.speed * dt;
 
-      // Wall collisions
+      // Wall collisions (high-speed impacts cause crash + damage)
       const minX = WALL_THICKNESS + BIKE_RADIUS;
       const maxX = ARENA_WIDTH - WALL_THICKNESS - BIKE_RADIUS;
       const minY = WALL_THICKNESS + BIKE_RADIUS;
       const maxY = ARENA_HEIGHT - WALL_THICKNESS - BIKE_RADIUS;
+      const WALL_CRASH_SPEED = 150; // speed threshold for wall crash
 
-      if (bike.x < minX) { bike.x = minX; bike.speed *= -0.3; }
-      if (bike.x > maxX) { bike.x = maxX; bike.speed *= -0.3; }
-      if (bike.y < minY) { bike.y = minY; bike.speed *= -0.3; }
-      if (bike.y > maxY) { bike.y = maxY; bike.speed *= -0.3; }
+      let hitWall = false;
+      if (bike.x < minX) { bike.x = minX; hitWall = true; }
+      if (bike.x > maxX) { bike.x = maxX; hitWall = true; }
+      if (bike.y < minY) { bike.y = minY; hitWall = true; }
+      if (bike.y > maxY) { bike.y = maxY; hitWall = true; }
+      if (hitWall) {
+        if (Math.abs(bike.speed) > WALL_CRASH_SPEED) {
+          this.crashBike(bike, CRASH_DAMAGE);
+        } else {
+          bike.speed *= -0.3;
+        }
+      }
 
-      // Obstacle collisions
+      // Obstacle collisions (high-speed impacts cause crash + damage)
       for (const obs of OBSTACLES) {
         const halfW = obs.w / 2 + BIKE_RADIUS;
         const halfH = obs.h / 2 + BIKE_RADIUS;
@@ -675,36 +702,52 @@ export class GameLoop {
           else if (min === oR) bike.x = obs.x + halfW;
           else if (min === oT) bike.y = obs.y - halfH;
           else bike.y = obs.y + halfH;
-          bike.speed *= -0.3;
+
+          if (Math.abs(bike.speed) > WALL_CRASH_SPEED) {
+            this.crashBike(bike, CRASH_DAMAGE);
+          } else {
+            bike.speed *= -0.3;
+          }
         }
       }
 
       // Check hazards underfoot
-      for (const hazard of this.hazards) {
+      for (let hi = this.hazards.length - 1; hi >= 0; hi--) {
+        const hazard = this.hazards[hi];
         const dx = bike.x - hazard.x;
         const dy = bike.y - hazard.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < hazard.radius + BIKE_RADIUS) {
+          // Owner is immune for a brief period after dropping
+          if (hazard.ownerId === bike.id && hazard.immuneUntilMs && hazard.remainingMs > hazard.immuneUntilMs) {
+            continue;
+          }
+
           if (hazard.type === "slick") {
-            // Slick zone: reduce handling temporarily
             if (bike.handlingDebuffTimer <= 0) {
               bike.handlingDebuff = 0.4;
-              bike.handlingDebuffTimer = 500; // brief handling loss
+              bike.handlingDebuffTimer = 500;
               bike.speedDebuff = 0.7;
               bike.speedDebuffTimer = 500;
             }
           } else if (hazard.type === "nails") {
             if (bike.stats.nailVulnerability === "instant") {
-              // Skinny tires: instant crash + big damage
               this.crashBike(bike, 25);
             } else if (bike.stats.nailVulnerability === "resistant") {
-              // Tough tires: minor slowdown, no crash
               bike.speedDebuff = 0.8;
               bike.speedDebuffTimer = 1000;
             } else {
-              // Normal tires: crash
               this.crashBike(bike, 15);
             }
+            // Push bike out of nail zone so they don't re-crash on recovery
+            if (dist > 0.001) {
+              const pushDist = hazard.radius + BIKE_RADIUS - dist + 5;
+              bike.x += (dx / dist) * pushDist;
+              bike.y += (dy / dist) * pushDist;
+            }
+            // Nails are consumed after one hit
+            this.hazards.splice(hi, 1);
+            break; // don't check more hazards this frame for this bike
           }
         }
       }
@@ -966,14 +1009,16 @@ export class GameLoop {
     if (!item || !item.params.mapEffect) return;
     const me = item.params.mapEffect;
 
-    // Drop behind the bike
+    // Drop well behind the bike (60px) so dropper doesn't hit their own nails
     this.hazards.push({
       id: uid(),
       type: me.type,
-      x: bike.x - Math.sin(bike.heading) * 30,
-      y: bike.y + Math.cos(bike.heading) * 30,
+      x: bike.x - Math.sin(bike.heading) * 60,
+      y: bike.y + Math.cos(bike.heading) * 60,
       radius: me.radius,
       remainingMs: me.duration,
+      ownerId: bike.id,
+      immuneUntilMs: me.duration - 1500, // owner immune for 1.5 seconds
     });
   }
 
