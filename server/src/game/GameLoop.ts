@@ -9,8 +9,8 @@ const ARENA_WIDTH = 1600;
 const ARENA_HEIGHT = 1200;
 const WALL_THICKNESS = 20;
 const BIKE_RADIUS = 14;
-const CRASH_DAMAGE = 20; // HP lost per crash
-const WALL_CRASH_SPEED = 80; // speed threshold for wall/obstacle crash
+const CRASH_DAMAGE = 8; // HP lost per crash
+const WALL_CRASH_SPEED = 120; // speed threshold for wall/obstacle crash (was 80)
 const BATTERY_DEAD_PERIOD = 10000; // ms before battery starts regenerating after hitting 0
 const BATTERY_REGEN_RATE = 0.167; // fraction per second (~3s from 0% to 50%)
 
@@ -717,7 +717,22 @@ export class GameLoop {
       if (Math.abs(bike.speed) > 10) {
         const turnMultiplier = Math.min(1, Math.abs(bike.speed) / (bike.stats.maxSpeed * 0.5));
         const effectiveTurn = bike.stats.turnSpeed * bike.stats.turnMultiplier * bike.handlingDebuff;
-        bike.heading += inp.turnInput * effectiveTurn * turnMultiplier * dt;
+
+        if (inp.targetHeading !== undefined && inp.targetHeading !== null) {
+          // Absolute heading mode (touch joystick): auto-steer toward target
+          let diff = inp.targetHeading - bike.heading;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const maxTurn = effectiveTurn * turnMultiplier * dt;
+          if (Math.abs(diff) < maxTurn) {
+            bike.heading = inp.targetHeading;
+          } else {
+            bike.heading += Math.sign(diff) * maxTurn;
+          }
+        } else {
+          // Relative turn mode (keyboard): apply turnInput directly
+          bike.heading += inp.turnInput * effectiveTurn * turnMultiplier * dt;
+        }
       }
 
       // Move
@@ -739,12 +754,13 @@ export class GameLoop {
         const impactSpeed = Math.abs(bike.speed);
         if (impactSpeed > WALL_CRASH_SPEED) {
           this.crashBike(bike, CRASH_DAMAGE);
-        } else if (impactSpeed > 5) {
-          // Any wall contact above crawling speed deals damage
-          const dmg = Math.max(2, Math.round(impactSpeed / 15));
+        } else if (impactSpeed > 40) {
+          // Only deal minor damage at moderate speed
+          const dmg = Math.max(1, Math.round(impactSpeed / 30));
           this.damageBike(bike, dmg);
           bike.speed *= -0.3;
         } else {
+          // Gentle contact: just bounce, no damage
           bike.speed *= -0.3;
         }
       }
@@ -768,8 +784,8 @@ export class GameLoop {
           const impactSpeed = Math.abs(bike.speed);
           if (impactSpeed > WALL_CRASH_SPEED) {
             this.crashBike(bike, CRASH_DAMAGE);
-          } else if (impactSpeed > 5) {
-            const dmg = Math.max(2, Math.round(impactSpeed / 15));
+          } else if (impactSpeed > 40) {
+            const dmg = Math.max(1, Math.round(impactSpeed / 30));
             this.damageBike(bike, dmg);
             bike.speed *= -0.3;
           } else {
@@ -1242,6 +1258,7 @@ export class GameLoop {
       // Default inputs
       bike.input.throttleInput = 1;
       bike.input.turnInput = 0;
+      bike.input.targetHeading = undefined;
       bike.input.boostInput = false;
       bike.input.nitroInput = false;
       bike.input.mopToggle = false;
@@ -1251,8 +1268,8 @@ export class GameLoop {
       bike.input.teleportInput = false;
       bike.input.shieldInput = false;
 
-      // ── Wall and obstacle avoidance (highest priority) ──
-      // Steer toward center of arena to stay away from walls
+      // ── Wall and obstacle avoidance ──
+      // Use targetHeading for bots (same as touch joystick: absolute direction)
       const centerX = ARENA_WIDTH / 2;
       const centerY = ARENA_HEIGHT / 2;
       const angleToCenterRaw = Math.atan2(centerX - bike.x, -(centerY - bike.y));
@@ -1264,35 +1281,26 @@ export class GameLoop {
       const distBottom = ARENA_HEIGHT - WALL_THICKNESS - bike.y;
       const minWallDist = Math.min(distLeft, distRight, distTop, distBottom);
 
-      // Cast multiple rays ahead to detect collisions
-      const lookAhead = 200;
+      // Cast a ray ahead to check if heading toward a wall
+      const lookAhead = Math.max(100, Math.abs(bike.speed) * 1.5);
       const futureX = bike.x + Math.sin(bike.heading) * lookAhead;
       const futureY = bike.y - Math.cos(bike.heading) * lookAhead;
-      let wallDanger = false;
-      let wallTurnDir = 0;
+      let needsAvoidance = false;
+      let avoidHeading = angleToCenterRaw; // default: head to center
 
-      // DANGER ZONE: within 200px of any wall, always steer away
-      const wallDangerZone = 200;
-      if (minWallDist < wallDangerZone) {
-        wallDanger = true;
-        // Turn toward center of arena
-        let angleDiffToCenter = angleToCenterRaw - bike.heading;
-        while (angleDiffToCenter > Math.PI) angleDiffToCenter -= Math.PI * 2;
-        while (angleDiffToCenter < -Math.PI) angleDiffToCenter += Math.PI * 2;
-        wallTurnDir = angleDiffToCenter > 0 ? 1 : -1;
+      // Future position out of bounds? Steer to center
+      const margin = WALL_THICKNESS + 60;
+      if (futureX < margin || futureX > ARENA_WIDTH - margin ||
+          futureY < margin || futureY > ARENA_HEIGHT - margin) {
+        needsAvoidance = true;
       }
 
-      // CRITICAL: future position out of bounds
-      if (futureX < WALL_THICKNESS + 50 || futureX > ARENA_WIDTH - WALL_THICKNESS - 50 ||
-          futureY < WALL_THICKNESS + 50 || futureY > ARENA_HEIGHT - WALL_THICKNESS - 50) {
-        wallDanger = true;
-        let angleDiffToCenter = angleToCenterRaw - bike.heading;
-        while (angleDiffToCenter > Math.PI) angleDiffToCenter -= Math.PI * 2;
-        while (angleDiffToCenter < -Math.PI) angleDiffToCenter += Math.PI * 2;
-        wallTurnDir = angleDiffToCenter > 0 ? 1 : -1;
+      // Very close to wall? Definitely steer to center
+      if (minWallDist < 100) {
+        needsAvoidance = true;
       }
 
-      // Check obstacles ahead (two look-ahead distances)
+      // Check obstacles ahead
       let obstacleDanger = false;
       for (const dist of [lookAhead, lookAhead * 0.5]) {
         const fX = bike.x + Math.sin(bike.heading) * dist;
@@ -1303,56 +1311,21 @@ export class GameLoop {
           if (fX > obs.x - halfW && fX < obs.x + halfW &&
               fY > obs.y - halfH && fY < obs.y + halfH) {
             obstacleDanger = true;
+            // Steer away from obstacle (perpendicular)
             const obsDx = bike.x - obs.x;
             const obsDy = bike.y - obs.y;
-            const obsAngle = Math.atan2(obsDx, -obsDy);
-            let obsDiff = obsAngle - bike.heading;
-            while (obsDiff > Math.PI) obsDiff -= Math.PI * 2;
-            while (obsDiff < -Math.PI) obsDiff += Math.PI * 2;
-            wallTurnDir = obsDiff > 0 ? 1 : -1;
+            avoidHeading = Math.atan2(obsDx, -obsDy);
+            needsAvoidance = true;
             break;
           }
         }
         if (obstacleDanger) break;
       }
 
-      // Also check current close proximity to obstacles (stuck against one)
-      if (!obstacleDanger) {
-        for (const obs of OBSTACLES) {
-          const closeW = obs.w / 2 + BIKE_RADIUS + 10;
-          const closeH = obs.h / 2 + BIKE_RADIUS + 10;
-          if (bike.x > obs.x - closeW && bike.x < obs.x + closeW &&
-              bike.y > obs.y - closeH && bike.y < obs.y + closeH) {
-            obstacleDanger = true;
-            const obsDx = bike.x - obs.x;
-            const obsDy = bike.y - obs.y;
-            const obsAngle = Math.atan2(obsDx, -obsDy);
-            let obsDiff = obsAngle - bike.heading;
-            while (obsDiff > Math.PI) obsDiff -= Math.PI * 2;
-            while (obsDiff < -Math.PI) obsDiff += Math.PI * 2;
-            wallTurnDir = obsDiff > 0 ? 1 : -1;
-            break;
-          }
-        }
-      }
-
-      // If stuck (speed very low but throttle is on), back up and turn toward center
-      const isStuck = Math.abs(bike.speed) < 25 && bike.input.throttleInput > 0;
-      if (isStuck) {
-        bike.input.throttleInput = -1; // reverse
-        let angleDiffToCenter = angleToCenterRaw - bike.heading;
-        while (angleDiffToCenter > Math.PI) angleDiffToCenter -= Math.PI * 2;
-        while (angleDiffToCenter < -Math.PI) angleDiffToCenter += Math.PI * 2;
-        bike.input.turnInput = angleDiffToCenter > 0 ? 1 : -1;
-        continue;
-      }
-
-      // Apply wall/obstacle avoidance
-      if (wallDanger || obstacleDanger) {
-        bike.input.turnInput = Math.max(-1, Math.min(1, wallTurnDir));
-        // The closer to wall, the slower we go
-        const speedFactor = Math.max(0.15, minWallDist / wallDangerZone);
-        bike.input.throttleInput = obstacleDanger ? 0.2 : speedFactor;
+      // Apply avoidance or chase behavior using targetHeading
+      if (needsAvoidance) {
+        bike.input.targetHeading = avoidHeading;
+        bike.input.throttleInput = obstacleDanger ? 0.4 : 0.7;
       } else if (nearestEnemy) {
         // ��─ Chase enemy (only if not avoiding walls) ──
         const dx = nearestEnemy.x - bike.x;
@@ -1362,9 +1335,7 @@ export class GameLoop {
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-        if (angleDiff > 0.1) bike.input.turnInput = 1;
-        else if (angleDiff < -0.1) bike.input.turnInput = -1;
-        else bike.input.turnInput = 0;
+        bike.input.targetHeading = angleToEnemy;
 
         // Use nitro when facing enemy and somewhat close
         if (nearestDist < 400 && Math.abs(angleDiff) < 0.5) {
@@ -1411,9 +1382,8 @@ export class GameLoop {
       }
 
       // Small randomness for unpredictability
-      if (Math.random() < 0.03) {
-        bike.input.turnInput += (Math.random() - 0.5) * 0.3;
-        bike.input.turnInput = Math.max(-1, Math.min(1, bike.input.turnInput));
+      if (Math.random() < 0.03 && bike.input.targetHeading !== undefined) {
+        bike.input.targetHeading += (Math.random() - 0.5) * 0.3;
       }
     }
   }

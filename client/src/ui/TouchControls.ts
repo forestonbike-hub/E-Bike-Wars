@@ -16,8 +16,8 @@ import Phaser from "phaser";
 const SAFE_PAD = 180; // px from edge on a 1920x1200 canvas
 
 export interface TouchInput {
-  turnInput: number;
-  throttleInput: number;
+  targetHeading: number | null; // absolute direction in radians (null = no joystick input)
+  throttleInput: number;        // 0 to 1 magnitude of joystick push
   boostInput: boolean;
   useItem: boolean;        // USE button pressed this frame
   selectedSlot: number;    // which item slot is selected (-1 = none)
@@ -60,7 +60,7 @@ export class TouchControls {
 
   // Current input state
   private input: TouchInput = {
-    turnInput: 0,
+    targetHeading: null,
     throttleInput: 0,
     boostInput: false,
     useItem: false,
@@ -190,7 +190,7 @@ export class TouchControls {
       if (pointer.id === this.joyPointerId) {
         this.joyActive = false;
         this.joyPointerId = -1;
-        this.input.turnInput = 0;
+        this.input.targetHeading = null;
         this.input.throttleInput = 0;
         this.drawJoyStick(this.joyBaseX, this.joyBaseY);
       }
@@ -344,15 +344,23 @@ export class TouchControls {
 
       this.drawJoyStick(this.joyBaseX + nx * clampedDist, this.joyBaseY + ny * clampedDist);
 
-      const normalizedX = (nx * clampedDist) / this.joyRadius;
-      const normalizedY = (ny * clampedDist) / this.joyRadius;
-
+      const magnitude = clampedDist / this.joyRadius;
       const deadzone = 0.15;
-      this.input.turnInput = Math.abs(normalizedX) > deadzone ? normalizedX : 0;
-      this.input.throttleInput = Math.abs(normalizedY) > deadzone ? -normalizedY : 0;
+
+      if (magnitude > deadzone) {
+        // Convert joystick (dx, dy) to an absolute heading in radians.
+        // Screen: right = +x, down = +y.
+        // Game heading: 0 = north (up on screen), increases clockwise.
+        // atan2(dx, -dy) gives heading where up = 0, right = PI/2.
+        this.input.targetHeading = Math.atan2(dx, -dy);
+        this.input.throttleInput = magnitude;
+      } else {
+        this.input.targetHeading = null;
+        this.input.throttleInput = 0;
+      }
     } else {
       this.drawJoyStick(this.joyBaseX, this.joyBaseY);
-      this.input.turnInput = 0;
+      this.input.targetHeading = null;
       this.input.throttleInput = 0;
     }
   }

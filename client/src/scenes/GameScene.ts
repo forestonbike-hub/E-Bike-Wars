@@ -254,7 +254,8 @@ export class GameScene extends Phaser.Scene {
   // ── HUD ──
 
   private createHUD() {
-    const sw = this.scale.width;
+    const zoom = this.cameras.main.zoom;
+    const sw = this.scale.width / zoom;
     const cx = sw / 2;
     const hy = 12;
 
@@ -285,8 +286,9 @@ export class GameScene extends Phaser.Scene {
   private createDesktopItemBar() {
     if (this.usableItems.length === 0) return;
 
-    const sw = this.scale.width;
-    const sh = this.scale.height;
+    const zoom = this.cameras.main.zoom;
+    const sw = this.scale.width / zoom;
+    const sh = this.scale.height / zoom;
     const slotSize = 48;
     const gap = 6;
     const totalW = this.usableItems.length * (slotSize + gap) - gap;
@@ -331,11 +333,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateDesktopSlotHighlights() {
+    const zoom = this.cameras.main.zoom;
     const slotSize = 48;
     const gap = 6;
     const totalW = this.usableItems.length * (slotSize + gap) - gap;
-    const startX = (this.scale.width - totalW) / 2;
-    const y = this.scale.height - 70;
+    const startX = (this.scale.width / zoom - totalW) / 2;
+    const y = this.scale.height / zoom - 70;
 
     for (let i = 0; i < this.slotGraphics.length; i++) {
       const x = startX + i * (slotSize + gap) + slotSize / 2;
@@ -346,8 +349,9 @@ export class GameScene extends Phaser.Scene {
   // ── Desktop: Control diagram ──
 
   private createDesktopControlDiagram() {
-    const sw = this.scale.width;
-    const sh = this.scale.height;
+    const zoom = this.cameras.main.zoom;
+    const sw = this.scale.width / zoom;
+    const sh = this.scale.height / zoom;
     const container = this.add.container(0, 0).setScrollFactor(0).setDepth(100);
 
     const bg = this.add.graphics();
@@ -666,10 +670,13 @@ export class GameScene extends Phaser.Scene {
     let useItem = false;
 
     // ── Touch input ──
+    let targetHeading: number | undefined;
     if (this.useTouch && this.touchControls) {
       const ti = this.touchControls.getInput();
-      turnInput = ti.turnInput;
-      throttleInput = ti.throttleInput;
+      if (ti.targetHeading !== null) {
+        targetHeading = ti.targetHeading;
+        throttleInput = ti.throttleInput;
+      }
       boostInput = ti.boostInput;
       this.selectedItemIndex = ti.selectedSlot;
       if (ti.useItem) {
@@ -709,6 +716,7 @@ export class GameScene extends Phaser.Scene {
     const input: PlayerInput = {
       turnInput,
       throttleInput,
+      targetHeading,
       boostInput,
       nitroInput: boostInput,
       mopToggle: false,
@@ -799,7 +807,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateHUD() {
-    const sw = this.scale.width;
+    const zoom = this.cameras.main.zoom;
+    const sw = this.scale.width / zoom;
     const barW = Math.min(200, sw * 0.2);
     const barX = (sw - barW) / 2;
     const hy = 12;
@@ -837,6 +846,7 @@ export class GameScene extends Phaser.Scene {
     this.healthHudText.setX(cx);
     this.batteryHudText.setX(cx);
     this.playerCountText.setX(sw - 16);
+    this.playerCountText.setY(hy);
 
     // Health bar
     this.healthHudBg.clear();
@@ -881,8 +891,9 @@ export class GameScene extends Phaser.Scene {
       this.countdownText = null;
     }
 
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
+    const zoom = this.cameras.main.zoom;
+    const cx = this.scale.width / zoom / 2;
+    const cy = this.scale.height / zoom / 2;
 
     if (count === 0) {
       this.gameStarted = true;
@@ -919,8 +930,9 @@ export class GameScene extends Phaser.Scene {
 
     const container = this.add.container(0, 0).setScrollFactor(0).setDepth(200);
 
-    const sw = this.scale.width;
-    const sh = this.scale.height;
+    const zoom = this.cameras.main.zoom;
+    const sw = this.scale.width / zoom;
+    const sh = this.scale.height / zoom;
 
     // Semi-transparent backdrop
     const bg = this.add.graphics();

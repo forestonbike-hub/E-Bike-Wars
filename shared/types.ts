@@ -416,6 +416,7 @@ export interface GameState {
 export interface PlayerInput {
   turnInput: number;    // -1 to 1
   throttleInput: number; // -1 to 1
+  targetHeading?: number; // absolute heading (radians) from touch joystick; server auto-steers when set
   boostInput: boolean;
   nitroInput: boolean;    // nitro burst
   mopToggle: boolean;     // toggle mop on/off
