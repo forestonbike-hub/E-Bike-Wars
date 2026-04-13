@@ -307,7 +307,8 @@ function handlePlayerLeave(socket: any) {
 }
 
 const PORT = process.env.PORT || 3000;
+const HOST = "0.0.0.0"; // Required for cloud platforms (Render, etc.)
 
-httpServer.listen(PORT, () => {
-  console.log(`E-Bike Wars server running on http://localhost:${PORT}`);
+httpServer.listen(Number(PORT), HOST, () => {
+  console.log(`E-Bike Wars server running on http://${HOST}:${PORT}`);
 });
