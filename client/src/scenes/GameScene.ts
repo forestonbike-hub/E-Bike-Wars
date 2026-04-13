@@ -747,7 +747,7 @@ export class GameScene extends Phaser.Scene {
 
   private interpolateBikes() {
     for (const bike of this.bikes.values()) {
-      const lerp = 0.25;
+      const lerp = 0.3;
       bike.container.x += (bike.targetX - bike.container.x) * lerp;
       bike.container.y += (bike.targetY - bike.container.y) * lerp;
 

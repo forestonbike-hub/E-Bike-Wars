@@ -9,8 +9,8 @@ const ARENA_WIDTH = 1600;
 const ARENA_HEIGHT = 1200;
 const WALL_THICKNESS = 20;
 const BIKE_RADIUS = 14;
-const CRASH_DAMAGE = 15; // HP lost per crash
-const WALL_CRASH_SPEED = 80; // speed threshold for wall/obstacle crash (was 150, too high)
+const CRASH_DAMAGE = 20; // HP lost per crash
+const WALL_CRASH_SPEED = 80; // speed threshold for wall/obstacle crash
 const BATTERY_DEAD_PERIOD = 10000; // ms before battery starts regenerating after hitting 0
 const BATTERY_REGEN_RATE = 0.167; // fraction per second (~3s from 0% to 50%)
 
@@ -46,7 +46,7 @@ interface BikeStats {
   health: number;
   speedBonus: number;         // flat speed added to maxSpeed
   turnMultiplier: number;     // applied to turnSpeed
-  damageReduction: number;    // flat damage absorbed per hit
+  damageReduction: number;    // percentage of damage absorbed (0.0 to 1.0)
   nailVulnerability: "normal" | "instant" | "resistant";
   // Item flags
   hasMop: boolean;
@@ -485,11 +485,11 @@ export class GameLoop {
       this.checkWinCondition();
 
       broadcastCounter++;
-      if (broadcastCounter >= 3) {
+      if (broadcastCounter >= 2) {
         broadcastCounter = 0;
         this.broadcastState();
       }
-    }, 1000 / 60);
+    }, 1000 / 30); // 30fps physics, 15fps broadcast
   }
 
   stop() {
@@ -1066,8 +1066,11 @@ export class GameLoop {
   }
 
   private damageBike(bike: ServerBike, rawDamage: number) {
-    const actual = Math.max(0, rawDamage - bike.stats.damageReduction);
+    // Damage reduction is percentage-based (0.0 to 1.0)
+    const reduced = Math.round(rawDamage * (1 - bike.stats.damageReduction));
+    const actual = Math.max(1, reduced); // always deal at least 1 damage
     bike.health -= actual;
+    console.log(`[DMG] ${bike.name}: ${rawDamage} raw -> ${actual} actual (${Math.round(bike.stats.damageReduction * 100)}% armor) HP: ${bike.health}/${bike.maxHealth}`);
     if (bike.health <= 0) {
       bike.health = 0;
       bike.isDead = true;
@@ -1248,16 +1251,21 @@ export class GameLoop {
       bike.input.teleportInput = false;
       bike.input.shieldInput = false;
 
+      // Bots start cautiously (half throttle until they reach decent speed)
+      if (bike.speed < 60) {
+        bike.input.throttleInput = 0.5;
+      }
+
       // ── Wall and obstacle avoidance (highest priority) ──
       // Cast a ray ahead to detect upcoming collisions
-      const lookAhead = 100; // pixels ahead to check
+      const lookAhead = 150; // pixels ahead to check (increased from 100)
       const futureX = bike.x + Math.sin(bike.heading) * lookAhead;
       const futureY = bike.y - Math.cos(bike.heading) * lookAhead;
       let wallDanger = false;
       let wallTurnDir = 0; // which way to turn to avoid
 
       // Check walls ahead
-      const wallMargin = 60;
+      const wallMargin = 100; // increased from 60 for earlier detection
       const nearLeft = bike.x < WALL_THICKNESS + wallMargin;
       const nearRight = bike.x > ARENA_WIDTH - WALL_THICKNESS - wallMargin;
       const nearTop = bike.y < WALL_THICKNESS + wallMargin;
@@ -1316,7 +1324,7 @@ export class GameLoop {
       }
 
       // If stuck (speed very low but throttle is on), back up and turn
-      const isStuck = Math.abs(bike.speed) < 15 && bike.input.throttleInput > 0;
+      const isStuck = Math.abs(bike.speed) < 25 && bike.input.throttleInput > 0;
       if (isStuck) {
         bike.input.throttleInput = -1; // reverse
         bike.input.turnInput = (Math.random() > 0.5) ? 1 : -1; // turn while backing up
@@ -1327,10 +1335,8 @@ export class GameLoop {
       // Apply wall/obstacle avoidance
       if (wallDanger || obstacleDanger) {
         bike.input.turnInput = Math.max(-1, Math.min(1, wallTurnDir));
-        // Slow down when near obstacles
-        if (obstacleDanger) {
-          bike.input.throttleInput = 0.5;
-        }
+        // Slow down when near walls or obstacles
+        bike.input.throttleInput = 0.3;
       } else if (nearestEnemy) {
         // ��─ Chase enemy (only if not avoiding walls) ──
         const dx = nearestEnemy.x - bike.x;

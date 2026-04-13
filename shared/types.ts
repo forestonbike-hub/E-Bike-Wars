@@ -228,22 +228,22 @@ export const EQUIP_ITEMS: EquipItem[] = [
     id: "bodyarmor-1",
     category: "armor",
     name: "Body Armor Lv1",
-    description: "Reduces damage from items and crashes.",
+    description: "Reduces all damage by 20%.",
     price: 150, icon: "🦺",
     params: {
-      damageReduction: 10,    // Absorbs 10 damage from each hit
+      damageReduction: 0.2,   // 20% damage reduction (percentage-based)
     },
   },
   {
     id: "bodyarmor-2",
     category: "armor",
     name: "Body Armor Lv2",
-    description: "Even more protection. Requires Lv1.",
+    description: "Reduces all damage by 40%. Requires Lv1.",
     price: 200, icon: "🦺",
     upgradeLabel: "LV2",
     requires: "bodyarmor-1",
     params: {
-      damageReduction: 25,    // Replaces Lv1 value: absorbs 25 damage per hit
+      damageReduction: 0.4,   // Replaces Lv1: 40% damage reduction
     },
   },
   {
