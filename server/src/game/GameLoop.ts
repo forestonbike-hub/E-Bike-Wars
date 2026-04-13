@@ -739,9 +739,10 @@ export class GameLoop {
         const impactSpeed = Math.abs(bike.speed);
         if (impactSpeed > WALL_CRASH_SPEED) {
           this.crashBike(bike, CRASH_DAMAGE);
-        } else if (impactSpeed > 30) {
-          // Minor wall bump: take some damage but don't crash
-          this.damageBike(bike, Math.round(impactSpeed / 20));
+        } else if (impactSpeed > 5) {
+          // Any wall contact above crawling speed deals damage
+          const dmg = Math.max(2, Math.round(impactSpeed / 15));
+          this.damageBike(bike, dmg);
           bike.speed *= -0.3;
         } else {
           bike.speed *= -0.3;
@@ -767,8 +768,9 @@ export class GameLoop {
           const impactSpeed = Math.abs(bike.speed);
           if (impactSpeed > WALL_CRASH_SPEED) {
             this.crashBike(bike, CRASH_DAMAGE);
-          } else if (impactSpeed > 30) {
-            this.damageBike(bike, Math.round(impactSpeed / 20));
+          } else if (impactSpeed > 5) {
+            const dmg = Math.max(2, Math.round(impactSpeed / 15));
+            this.damageBike(bike, dmg);
             bike.speed *= -0.3;
           } else {
             bike.speed *= -0.3;

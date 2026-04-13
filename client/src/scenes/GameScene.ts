@@ -254,30 +254,31 @@ export class GameScene extends Phaser.Scene {
   // ── HUD ──
 
   private createHUD() {
-    // HUD positions account for camera zoom (1.2x) which shifts viewport origin
-    // Use generous padding so bars aren't clipped on any screen
-    const hx = 16; // HUD left margin
-    const hy = 16; // HUD top margin
+    // Center all HUD bars at the top-center of the screen
+    const sw = this.scale.width;
+    const barW = 140;
+    const cx = sw / 2; // center x
+    const hy = 10; // top margin
 
     this.boostBar = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.boostText = this.add.text(hx, hy + 18, "", {
+    this.boostText = this.add.text(cx, hy + 18, "", {
       fontSize: "13px", color: "#ff8800", fontFamily: "Arial, sans-serif", fontStyle: "bold",
-    }).setScrollFactor(0).setDepth(100);
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
     this.healthHudBg = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.healthHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.healthHudText = this.add.text(hx, hy + 44, "HP: 100", {
+    this.healthHudText = this.add.text(cx, hy + 44, "HP: 100", {
       fontSize: "13px", color: "#44cc66", fontFamily: "Arial, sans-serif", fontStyle: "bold",
-    }).setScrollFactor(0).setDepth(100);
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
     // Battery bar (below health bar)
     this.batteryHudBg = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.batteryHudFill = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.batteryHudText = this.add.text(hx, hy + 70, "Battery: 100%", {
+    this.batteryHudText = this.add.text(cx, hy + 70, "Battery: 100%", {
       fontSize: "13px", color: "#ff8833", fontFamily: "Arial, sans-serif", fontStyle: "bold",
-    }).setScrollFactor(0).setDepth(100);
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
-    this.playerCountText = this.add.text(this.scale.width - 16, hy, "", {
+    this.playerCountText = this.add.text(sw - 16, hy, "", {
       fontSize: "13px", color: "#aabbcc", fontFamily: "Arial, sans-serif", align: "right",
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
   }
@@ -390,43 +391,108 @@ export class GameScene extends Phaser.Scene {
     const boostTrail = this.add.graphics();
     container.add(boostTrail);
 
-    // Normal body
+    // Normal body - bird's eye view of person on e-bike
     const body = this.add.graphics();
+
+    // Back wheel
+    body.fillStyle(0x222222, 1);
+    body.fillRoundedRect(-4, 10, 8, 14, 3);
+    // Front wheel
+    body.fillRoundedRect(-4, -24, 8, 14, 3);
+
+    // Bike frame (center bar)
+    body.fillStyle(0x555555, 1);
+    body.fillRect(-2, -16, 4, 28);
+
+    // Handlebars
+    body.fillStyle(0x444444, 1);
+    body.fillRoundedRect(-10, -18, 20, 4, 2);
+
+    // Rider torso (oval, colored jersey)
     body.fillStyle(color, 1);
-    body.fillRoundedRect(-10, -18, 20, 36, 6);
-    body.fillStyle(0xffffff, 0.9);
-    body.fillTriangle(-5, -14, 5, -14, 0, -22);
-    body.lineStyle(2, 0x222222, 1);
-    body.strokeRoundedRect(-10, -18, 20, 36, 6);
+    body.fillEllipse(0, 0, 16, 20);
+    // Torso outline
+    body.lineStyle(1.5, 0x222222, 0.6);
+    body.strokeEllipse(0, 0, 16, 20);
+
+    // Rider head (circle, skin tone)
+    body.fillStyle(0xffccaa, 1);
+    body.fillCircle(0, -12, 5);
+    body.lineStyle(1, 0x222222, 0.5);
+    body.strokeCircle(0, -12, 5);
+
+    // Helmet (arc over top of head, colored)
+    body.fillStyle(color, 0.9);
+    body.fillEllipse(0, -14, 10, 6);
+
+    // Arms reaching to handlebars
+    body.lineStyle(3, 0xffccaa, 1);
+    body.beginPath();
+    body.moveTo(-5, -4); body.lineTo(-9, -16);
+    body.moveTo(5, -4); body.lineTo(9, -16);
+    body.strokePath();
+
+    // Legs (bent knees, feet on pedals)
+    body.lineStyle(3, 0x334466, 1);
+    body.beginPath();
+    body.moveTo(-4, 6); body.lineTo(-8, 14); body.lineTo(-4, 18);
+    body.moveTo(4, 6); body.lineTo(8, 14); body.lineTo(4, 18);
+    body.strokePath();
+
+    // Direction indicator (small white chevron at front)
+    body.fillStyle(0xffffff, 0.7);
+    body.fillTriangle(-4, -22, 4, -22, 0, -27);
+
     container.add(body);
 
-    // Crashed body
+    // Crashed body - bike tipped over, rider sprawled
     const crashBody = this.add.graphics();
-    crashBody.fillStyle(color, 0.7);
-    crashBody.fillRoundedRect(-18, -8, 36, 16, 4);
-    crashBody.fillStyle(0x333333, 0.8);
+
+    // Tipped bike frame (angled)
+    crashBody.fillStyle(0x555555, 0.6);
+    crashBody.fillRect(-14, -4, 28, 3);
+    // Wheels (sideways)
+    crashBody.fillStyle(0x222222, 0.7);
     crashBody.fillCircle(-12, 0, 5);
     crashBody.fillCircle(12, 0, 5);
-    crashBody.fillStyle(0xffccaa, 0.9);
-    crashBody.fillCircle(0, -14, 6);
-    crashBody.fillStyle(color, 0.5);
-    crashBody.fillRoundedRect(-8, -8, 6, 14, 2);
+    // Handlebars (askew)
+    crashBody.fillStyle(0x444444, 0.6);
+    crashBody.fillRect(8, -8, 3, 12);
+
+    // Rider body (sprawled, slightly offset)
+    crashBody.fillStyle(color, 0.6);
+    crashBody.fillEllipse(-2, -6, 14, 18);
+    // Head (off to side)
+    crashBody.fillStyle(0xffccaa, 0.7);
+    crashBody.fillCircle(-4, -16, 5);
+
+    // Star burst impact effect
     crashBody.fillStyle(0xffff00, 0.8);
     crashBody.fillTriangle(8, -22, 5, -18, 11, -18);
     crashBody.fillTriangle(8, -14, 5, -18, 11, -18);
     crashBody.fillStyle(0xffff00, 0.6);
     crashBody.fillTriangle(-6, -24, -9, -20, -3, -20);
     crashBody.fillTriangle(-6, -16, -9, -20, -3, -20);
-    crashBody.lineStyle(2, 0x222222, 0.6);
-    crashBody.strokeRoundedRect(-18, -8, 36, 16, 4);
+
+    crashBody.lineStyle(1.5, 0x222222, 0.4);
+    crashBody.strokeEllipse(-2, -6, 14, 18);
     crashBody.setVisible(false);
     container.add(crashBody);
 
-    // Dead body
+    // Dead body - wreckage smoke cloud with X
     const deadBody = this.add.graphics();
-    deadBody.fillStyle(0x333333, 0.5);
-    deadBody.fillCircle(0, 0, 16);
+    // Smoke/wreckage cloud
+    deadBody.fillStyle(0x444444, 0.4);
+    deadBody.fillCircle(-4, -3, 12);
+    deadBody.fillCircle(5, 2, 10);
+    deadBody.fillCircle(-2, 6, 8);
+    // Scattered bike parts
+    deadBody.fillStyle(0x222222, 0.5);
+    deadBody.fillCircle(-10, 8, 4);
+    deadBody.fillCircle(10, -6, 4);
+    // Red X
     deadBody.lineStyle(3, 0xff2222, 0.8);
+    deadBody.beginPath();
     deadBody.moveTo(-8, -8); deadBody.lineTo(8, 8);
     deadBody.moveTo(8, -8); deadBody.lineTo(-8, 8);
     deadBody.strokePath();
@@ -739,41 +805,43 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateHUD() {
-    const hx = 16;
-    const hy = 16;
+    const sw = this.scale.width;
+    const barW = 140;
+    const barX = (sw - barW) / 2; // left edge of centered bar
+    const hy = 10;
 
-    // Boost bar
+    // Boost/status bar
     this.boostBar.clear();
     this.boostBar.fillStyle(0x333344, 0.8);
-    this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
+    this.boostBar.fillRoundedRect(barX, hy, barW, 8, 4);
 
     if (this.myDead) {
       this.boostBar.fillStyle(0x555555, 1);
-      this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
+      this.boostBar.fillRoundedRect(barX, hy, barW, 8, 4);
       this.boostText.setText("ELIMINATED");
       this.boostText.setColor("#888888");
     } else if (this.myCrashed) {
       this.boostBar.fillStyle(0xff2222, 1);
-      this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
+      this.boostBar.fillRoundedRect(barX, hy, barW, 8, 4);
       this.boostText.setText("CRASHED!");
       this.boostText.setColor("#ff2222");
     } else if (this.myBoosting) {
       this.boostBar.fillStyle(0xffcc00, 1);
-      this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
+      this.boostBar.fillRoundedRect(barX, hy, barW, 8, 4);
       this.boostText.setText("NITRO!");
       this.boostText.setColor("#ffcc00");
     } else {
       this.boostBar.fillStyle(0xff8800, 1);
-      this.boostBar.fillRoundedRect(hx, hy, 110, 8, 4);
+      this.boostBar.fillRoundedRect(barX, hy, barW, 8, 4);
       this.boostText.setText(this.useTouch ? "Nitro ready!" : "Nitro [SPACE]");
       this.boostText.setColor("#ff8800");
     }
 
-    // Health HUD
+    // Health bar
     this.healthHudBg.clear();
     this.healthHudFill.clear();
     this.healthHudBg.fillStyle(0x333344, 0.8);
-    this.healthHudBg.fillRoundedRect(hx, hy + 28, 110, 10, 4);
+    this.healthHudBg.fillRoundedRect(barX, hy + 28, barW, 10, 4);
 
     const hpRatio = this.myHealth / this.myMaxHealth;
     let hpColor = 0x44cc66;
@@ -781,25 +849,25 @@ export class GameScene extends Phaser.Scene {
     else if (hpRatio < 0.6) hpColor = 0xffcc22;
 
     this.healthHudFill.fillStyle(hpColor, 1);
-    this.healthHudFill.fillRoundedRect(hx, hy + 28, 110 * hpRatio, 10, 4);
+    this.healthHudFill.fillRoundedRect(barX, hy + 28, barW * hpRatio, 10, 4);
 
     this.healthHudText.setText(`HP: ${Math.ceil(this.myHealth)}`);
     if (hpRatio < 0.3) this.healthHudText.setColor("#ff2222");
     else if (hpRatio < 0.6) this.healthHudText.setColor("#ffcc22");
     else this.healthHudText.setColor("#44cc66");
 
-    // Battery HUD
+    // Battery bar
     this.batteryHudBg.clear();
     this.batteryHudFill.clear();
     this.batteryHudBg.fillStyle(0x333344, 0.8);
-    this.batteryHudBg.fillRoundedRect(hx, hy + 56, 110, 10, 4);
+    this.batteryHudBg.fillRoundedRect(barX, hy + 56, barW, 10, 4);
 
     const batRatio = this.myBatteryPercent / 100;
     let batColor = 0xff8833;
     if (batRatio < 0.2) batColor = 0xff2222;
 
     this.batteryHudFill.fillStyle(batColor, 1);
-    this.batteryHudFill.fillRoundedRect(hx, hy + 56, 110 * batRatio, 10, 4);
+    this.batteryHudFill.fillRoundedRect(barX, hy + 56, barW * batRatio, 10, 4);
 
     this.batteryHudText.setText(`Battery: ${Math.ceil(this.myBatteryPercent)}%`);
     if (batRatio < 0.2) this.batteryHudText.setColor("#ff2222");
