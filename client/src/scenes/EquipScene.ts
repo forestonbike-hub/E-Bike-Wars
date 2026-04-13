@@ -13,6 +13,7 @@ export class EquipScene extends Phaser.Scene {
   private overlay!: HTMLDivElement;
   private selectedItems: Set<string> = new Set();
   private isReady: boolean = false;
+  private activeCategory: EquipCategory = "bike";
 
   constructor() {
     super({ key: "EquipScene" });
@@ -218,6 +219,8 @@ export class EquipScene extends Phaser.Scene {
   }
 
   private switchTab(category: EquipCategory) {
+    this.activeCategory = category;
+
     const tabs = this.overlay.querySelectorAll(".equip-tab");
     const colors: Record<EquipCategory, string> = {
       bike: "#4488ff",
@@ -321,10 +324,7 @@ export class EquipScene extends Phaser.Scene {
 
     // Re-render current tab and budget
     this.updateBudget();
-    const activeTab = this.overlay.querySelector(".equip-tab[style*='#222244']") as HTMLElement;
-    if (activeTab) {
-      this.renderItems(activeTab.dataset.category as EquipCategory);
-    }
+    this.renderItems(this.activeCategory);
   }
 
   private updateBudget() {
@@ -358,10 +358,7 @@ export class EquipScene extends Phaser.Scene {
     socket.emit("equipReady");
 
     // Re-render items (disables checkboxes when ready)
-    const activeTab = this.overlay.querySelector(".equip-tab[style*='#222244']") as HTMLElement;
-    if (activeTab) {
-      this.renderItems(activeTab.dataset.category as EquipCategory);
-    }
+    this.renderItems(this.activeCategory);
   }
 
   private updateReadyCount() {
