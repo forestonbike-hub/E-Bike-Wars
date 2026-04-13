@@ -1,6 +1,6 @@
 # E-Bike Wars: Product Requirements Document
 
-**Version:** 1.1
+**Version:** 1.2
 **Created:** April 12, 2026
 **Last updated:** April 12, 2026
 **Status:** Active
@@ -11,7 +11,7 @@
 
 E-Bike Wars is a free, multiplayer browser game with two stages.
 First, every player gets the same budget to build and equip their
-e-bike (choosing frames, weapons, armor, and accessories). Then
+e-bike (buying bike upgrades, weapons, and armor). Then
 everyone enters a top-down arena and battles until one bike is left
 standing. No downloads, no accounts. Players join by clicking a
 shared link.
@@ -24,14 +24,15 @@ shared link.
 **Perspective:** Top-down bird's eye view
 **Art style:** Cartoon / clean (bright, friendly, simple shapes)
 **Session size:** 2-8 players per game
-**Round structure:** Build Phase (strategy) > Battle Phase (action)
+**Round structure:** Equip Phase (strategy) > Battle Phase (action)
 **Win condition:** Last e-bike standing wins the round
 
-The build phase is where the strategy happens. Everyone has the same
-budget but must make trade-offs: a fast bike with a big gun but no
-armor? A tank that's slow but hard to kill? A balanced build with
-a little of everything? You don't know what anyone else is building
-until the battle starts.
+The equip phase is where the strategy happens. Everyone starts with
+the same e-bike and the same $1,000 budget. You spend that budget
+on bike upgrades, armor, and weapons. A faster motor with a dog
+and no armor? Full armor and a mop? A balanced build with a little
+of everything? You don't know what anyone else is buying until the
+battle starts.
 
 ---
 
@@ -79,20 +80,21 @@ chat and everyone is playing within 30 seconds.
 - "Copy Link" button for quick sharing
 - Session scoreboard visible (wins from previous rounds)
 
-### 6.3 Build Phase (Stage 1)
-- Timer counts down (60-90 seconds to build)
-- Every player starts with the same budget (e.g., $1,000)
-- Shop interface showing available items organized by category
-- Players buy a bike frame, then add weapons, armor, and accessories
-- Each purchase deducts from the budget. No refunds (or allow
-  sell-back at reduced price, TBD)
-- Players can see their bike preview updating as they add items
-- Remaining budget displayed prominently
-- Other players' builds are hidden (you can't see what they're buying)
-- "Ready" button when done building. Once all players are ready (or
-  the timer expires), the battle begins
-- Players who don't finish building in time go with whatever they
-  have equipped
+### 6.3 Equip Phase (Stage 1)
+- Every player starts with the same $1,000 budget
+- Shop interface with three category tabs: Bike, Armor, Weapons
+- Click a tab to expand its item list; other tabs collapse
+- Each item has a checkbox, icon, name, description, and price
+- Click to buy (checkbox fills, budget decreases). Click again to
+  remove (budget refunded in full)
+- Items you can't afford are grayed out
+- Budget counter updates live, color-coded: green (plenty), yellow
+  (low), red (spent)
+- Other players' purchases are hidden
+- "Ready for Battle" button when done shopping. Locks your
+  selections. When all players are ready, the battle begins
+- All items are optional. You can enter battle with unspent budget
+  (though there's no advantage to saving money)
 
 ### 6.4 Battle Phase (Stage 2)
 - 3... 2... 1... GO! countdown
@@ -112,131 +114,137 @@ chat and everyone is playing within 30 seconds.
 - "Play Again" returns everyone to the lobby for the next round
 
 ### 6.6 Round Loop
-Lobby > Build Phase > Battle Phase > Results > Lobby (repeat)
+Lobby > Equip Phase > Battle Phase > Results > Lobby (repeat)
 
 ---
 
-## 7. Build Phase: Shop System
+## 7. Equip Phase: Shop System
+
+All items are defined in `shared/types.ts` (the single source of
+truth for the codebase). This section mirrors that file in a
+readable format. If prices or descriptions change, update both
+this document and `shared/types.ts`.
 
 ### 7.1 Budget
-- Every player starts each round with the same amount (e.g., $1,000)
+- Every player starts each round with **$1,000**
 - Budget resets each round (no carrying money between rounds)
-- All items have fixed prices visible in the shop
+- All items have fixed prices. Buy/unbuy freely before readying up
+- No limit on how many items you can buy (budget is the only constraint)
+- Unspent budget has no benefit
 
-### 7.2 Bike Frames
-The frame is the base of your bike. It determines base stats before
-equipment is added. Players must pick exactly one frame.
+### 7.2 Bike Upgrades
+Every player starts with the same base e-bike. These upgrades
+improve your ride's performance. All are optional.
 
-| Frame | Cost | Speed | Health | Size | Description |
-|-------|------|-------|--------|------|-------------|
-| Scout | $150 | Fast | Low (70 HP) | Small | Quick and agile, hard to hit, but fragile |
-| Standard | $200 | Medium | Medium (100 HP) | Medium | Balanced all-rounder |
-| Bruiser | $300 | Slow | High (150 HP) | Large | Tanky and heavy, deals more ram damage |
-| Racer | $250 | Very fast | Low (60 HP) | Small | Fastest frame, glass cannon for boost-ram builds |
+| Item | Price | Icon | Effect |
+|------|-------|------|--------|
+| Motor | $150 | ⚡ | Increases top speed |
+| Battery | $120 | 🔋 | Longer boost duration |
+| Tires | $100 | 🛞 | Better grip and turning |
+| Nitro | $250 | 🔥 | Massive speed burst on demand |
+| Teleporter | $300 | ✨ | Short-range blink to dodge attacks |
 
-**Assumption:** These are starter values. We'll tune through playtesting.
+### 7.3 Armor
+Protective gear that helps you survive crashes and attacks.
 
-### 7.3 Weapons
-Weapons add offensive capability beyond ramming. Players can equip
-one weapon at a time (or none, to save budget for other items).
+| Item | Price | Icon | Effect |
+|------|-------|------|--------|
+| Helmet | $80 | ⛑️ | Reduces crash stun time |
+| Body Armor | $200 | 🦺 | Absorbs damage from hits |
+| Trash Can Lid | $120 | 🛡️ | Blocks attacks from behind |
 
-| Weapon | Cost | Effect |
-|--------|------|--------|
-| Machine Gun | $200 | Rapid fire, low damage per shot. Good for chip damage at range. |
-| Shotgun | $250 | Fires a spread of pellets. High damage up close, weak at distance. |
-| Missile Launcher | $350 | Slow-firing homing missile. High damage but limited ammo (3 shots per round). |
-| EMP Blast | $300 | Short-range burst that disables nearby bikes for 2 seconds (no damage). |
-| None | $0 | Save your budget. Ram-only build. |
+### 7.4 Weapons
+Offensive items you can use during battle to crash or damage
+other riders. The fun stuff.
 
-### 7.4 Armor
-Armor reduces incoming damage but adds weight (reduces speed).
+| Item | Price | Icon | Effect |
+|------|-------|------|--------|
+| Mop | $100 | 🧹 | Swing to knock nearby riders |
+| Newspapers | $80 | 📰 | Throw to temporarily blind opponents |
+| Water Balloon | $120 | 🎈 | Lob to make area slippery |
+| Nails | $150 | 📌 | Drop behind you to pop tires |
+| Dog | $250 | 🐕 | Chases nearest opponent and trips them |
 
-| Armor | Cost | Damage Reduction | Speed Penalty |
-|-------|------|-----------------|---------------|
-| None | $0 | 0% | None |
-| Light Plating | $150 | 15% reduction | Slight slowdown |
-| Heavy Plating | $300 | 30% reduction | Noticeable slowdown |
-| Reactive Armor | $400 | 20% reduction + reflects 10% damage back to attacker | Moderate slowdown |
+### 7.5 Example Builds (to illustrate trade-offs)
 
-### 7.5 Accessories
-Optional items that add special abilities or passive bonuses.
-Players can equip up to 2 accessories.
+**Speed Demon ($920):**
+Motor ($150) + Battery ($120) + Nitro ($250) + Tires ($100) +
+Dog ($250) + Helmet ($80). Maxed-out speed with a dog to harass
+opponents. Helmet reduces crash penalty. No body armor though,
+so vulnerable to direct attacks. $80 unspent.
 
-| Accessory | Cost | Effect |
-|-----------|------|--------|
-| Turbo Boost | $150 | Upgrades your boost (longer duration, shorter cooldown) |
-| Oil Slick | $200 | Drop an oil patch behind you (3 uses). Bikes that ride over it spin out. |
-| Shield Generator | $250 | One-time shield that absorbs the next 50 damage, then breaks |
-| Radar | $100 | Shows all enemy positions on your minimap even through obstacles |
-| Spikes | $200 | Passive: bikes that ram you take 25% of the damage back |
-| Nitro Tank | $150 | One massive speed boost (single use). Great for a surprise attack. |
+**The Survivor ($880):**
+Helmet ($80) + Body Armor ($200) + Trash Can Lid ($120) +
+Tires ($100) + Motor ($150) + Newspapers ($80) + Water Balloon
+($120) + Nails ($150). Full armor stack with cheap weapons.
+Slow to kill but hard to take down. $120 unspent.
 
-### 7.6 Example Builds (to illustrate trade-offs)
+**Chaos Agent ($780):**
+Dog ($250) + Nails ($150) + Water Balloon ($120) + Mop ($100) +
+Newspapers ($80) + Helmet ($80). Every weapon in the shop plus
+a helmet. No bike upgrades, so you're slow. But the arena will
+be total chaos around you. $220 unspent.
 
-**Glass Cannon ($1,000):**
-Racer frame ($250) + Missile Launcher ($350) + Turbo Boost ($150) +
-Nitro Tank ($150). Extremely fast with big damage, but 60 HP and
-no armor. One good hit and you're done.
+**Budget Build ($380):**
+Motor ($150) + Tires ($100) + Mop ($100) + Helmet ($80).
+Basic speed, basic weapon, basic protection. Saves $620. Not
+optimal but gets the job done.
 
-**The Tank ($1,000):**
-Bruiser frame ($300) + Heavy Plating ($300) + Spikes ($200) +
-Radar ($100). Slow but nearly unkillable. Rams everything in sight
-and punishes anyone who rams back.
+**All-In Speed ($820):**
+Motor ($150) + Battery ($120) + Nitro ($250) + Teleporter ($300).
+Every bike upgrade. No armor, no weapons. Pure evasion strategy
+with the ability to blink away from danger. $180 unspent.
 
-**Hit and Run ($950):**
-Scout frame ($150) + Shotgun ($250) + Light Plating ($150) +
-Oil Slick ($200) + Turbo Boost ($150). Fast, gets in close for
-shotgun damage, drops oil to escape. $50 left unspent.
-
-**Budget Brawler ($550):**
-Standard frame ($200) + Machine Gun ($200) + Turbo Boost ($150).
-Saves $450 in budget. Not optimized but functional. (Leftover
-budget has no benefit, so this is a suboptimal strategy.)
+> **Note:** Prices are placeholder values for initial testing.
+> We will tune through playtesting. Each item may also get
+> upgrade tiers in the future (e.g., Motor Level 1/2/3).
 
 ---
 
 ## 8. Battle Phase: Gameplay Mechanics
 
 ### 8.1 Movement
-- E-bikes move forward continuously at a base speed (modified by frame
-  and armor choices)
-- Player controls the steering (left/right rotation)
-- Acceleration and braking (speed up / slow down)
-- Desktop: WASD or arrow keys for movement, mouse to aim weapons
-- Mobile: virtual joystick for movement, tap to fire
+- All e-bikes start with the same base speed
+- Motor upgrade increases top speed; Tires upgrade improves turning
+- Player controls steering (left/right rotation) and throttle (accelerate/brake)
+- Desktop: WASD or arrow keys. Mobile: virtual joystick
 
 ### 8.2 Boost
 - Every bike has a boost ability (short speed burst)
-- Base cooldown: 5 seconds (Turbo Boost accessory improves this)
-- Boosting into another bike increases ram damage
+- Base cooldown: 5 seconds. Battery upgrade extends boost duration
+- Nitro upgrade gives a separate massive speed burst on demand
+- Boosting into another bike causes a crash
 - Desktop: spacebar. Mobile: on-screen button
 
-### 8.3 Ramming
-- Hitting another bike deals damage based on your speed and frame weight
-- Head-on collisions damage both players
-- Rear hits deal more damage to the target
-- Heavier frames deal more ram damage
-- Spikes accessory reflects damage back to the attacker
+### 8.3 Crashing
+- Bike-to-bike collisions cause both riders to crash
+- Crashed bikes stop for 1 second (stunned, no input)
+- Crashed visual: bike tips over, rider falls, daze sparkles
+- Helmet reduces crash stun time
+- Weapons like the Mop can cause crashes without the attacker crashing
 
 ### 8.4 Weapons
-- Weapons fire in the direction the bike is facing (or mouse aim on
-  desktop)
-- Each weapon has its own fire rate, range, and damage profile
-- Ammo is unlimited except for Missile Launcher (3 shots per round)
-- Weapons can be fired while moving
+Each weapon has unique behavior during battle:
+- **Mop:** Swing to knock nearby riders (causes them to crash, you don't)
+- **Newspapers:** Throw to temporarily obscure an opponent's screen
+- **Water Balloon:** Lob to create a slippery zone on the ground
+- **Nails:** Drop behind you; bikes that ride over them lose speed
+- **Dog:** Releases a dog that chases the nearest opponent and trips them
 
-### 8.5 Health System
-- Starting health is determined by bike frame choice
-- Damage comes from ramming, weapons, and arena hazards
-- Armor reduces incoming damage by a percentage
-- At 0 health, the bike is eliminated (explosion effect)
-- No health regeneration (keeps rounds aggressive)
+### 8.5 Armor Effects
+- **Helmet:** Reduces crash stun time (recover faster)
+- **Body Armor:** Absorbs damage from weapon hits
+- **Trash Can Lid:** Blocks attacks that hit you from behind
 
-### 8.6 Arena
-- Rectangular arena with solid walls around the edges
-- Scattered obstacles (barriers, columns) for cover and tactical play
-- Arena shrinks every 20-30 seconds, pushing remaining players closer
-- Shrinking zone deals damage to bikes caught outside the safe area
+### 8.6 Teleporter
+- Short-range blink in the direction you're facing
+- Useful for dodging attacks or repositioning quickly
+- Cooldown TBD through playtesting
+
+### 8.7 Arena
+- Rectangular arena (1600x1200) with solid walls around the edges
+- 11 scattered obstacles (barriers, columns) for cover and tactical play
+- Arena may shrink over time to force players closer (TBD)
 - Clean, readable layout so players always know where they are
 
 ---
@@ -251,7 +259,7 @@ budget has no benefit, so this is a suboptimal strategy.)
 - Readable at small sizes (important for mobile)
 
 ### 9.2 Player Bikes
-- Simple top-down bike shape that visually reflects the chosen frame
+- Simple top-down bike shape (same base for all players)
 - Each player gets a distinct color
 - Equipped weapons visible on the bike sprite
 - Armor visually changes the bike appearance (thicker outline, plating)
@@ -259,14 +267,15 @@ budget has no benefit, so this is a suboptimal strategy.)
 - Boost effect: speed lines or glow trail behind the bike
 - Damage effect: bike flashes red, slight screen shake
 
-### 9.3 Build Phase UI
-- Shop laid out as a clean grid or list, organized by category tabs
-  (Frames / Weapons / Armor / Accessories)
-- Each item shows: icon, name, price, stat summary
-- Bike preview in the center updates live as items are added
-- Budget bar at the top shows remaining money
-- "Ready" button at the bottom
-- Timer visible at the top
+### 9.3 Equip Phase UI
+- Header: player name (left), budget counter (right)
+- Three category tabs: Bike, Armor, Weapons
+- Click a tab to see its items; accordion-style (one open at a time)
+- Each item: checkbox + emoji icon + name + description + price
+- Checkbox fills blue with white checkmark when selected
+- Budget counter color-coded: green > yellow > red as money depletes
+- Items you can't afford are grayed out
+- "Ready for Battle" button at the bottom locks selections
 - Clean enough to be usable on a phone screen
 
 ### 9.4 Arena
@@ -278,17 +287,16 @@ budget has no benefit, so this is a suboptimal strategy.)
 ### 9.5 Battle UI Elements
 - Health bar above each bike (small, clean)
 - Boost cooldown indicator
-- Weapon ammo count (if applicable)
+- Crash stun indicator
 - Round timer (top center)
 - Player count / alive count
 - Kill feed (top right, shows eliminations)
-- Minimap (if Radar accessory is equipped)
 
 ---
 
 ## 10. Audio (future, not required for MVP)
 
-- Background music: different tracks for build phase (chill/strategic)
+- Background music: different tracks for equip phase (chill/strategic)
   vs. battle phase (intense/energetic)
 - Sound effects: item purchase click, boost activation, weapon fire,
   collision impact, elimination explosion, countdown beeps, round
@@ -309,7 +317,7 @@ budget has no benefit, so this is a suboptimal strategy.)
 
 ### 11.2 Networking Model
 - Server is authoritative: it owns the true game state
-- During build phase: clients send purchase/equip actions, server
+- During equip phase: clients send purchase/equip actions, server
   validates budget and updates loadout
 - During battle phase: clients send input (steering, boost, fire),
   server calculates physics, collisions, projectiles, and damage
@@ -331,7 +339,7 @@ budget has no benefit, so this is a suboptimal strategy.)
 
 ---
 
-## 12. Build Phases
+## 12. Equip Phases
 
 ### Phase 0: Project Skeleton [COMPLETE]
 Tech stack wired up. Phaser loads in the browser. Socket.io connects
@@ -346,10 +354,10 @@ driving.
 Create/join rooms via shareable link. Lobby with player names.
 Host can start the game.
 
-### Phase 3: Build Phase (Shop System)
-Shop UI with item categories. Budget system. Bike frame selection.
-Weapons, armor, and accessories. Live bike preview. Ready system
-with timer. Server validates all purchases.
+### Phase 3: Equip Phase (Shop System)
+Shop UI with three category tabs (Bike / Armor / Weapons). $1,000
+budget system. Checkbox-based item selection. Server validates all
+purchases. Ready system. All players see equip screen simultaneously.
 
 ### Phase 4: Multiplayer Arena
 All players enter the arena with their builds. Networked movement.
@@ -383,9 +391,10 @@ button in-game.
 The minimum playable version (end of Phase 5) includes:
 - Join a game via shared link with no account
 - 2-8 players
-- Build phase: same budget, buy frame + weapons + armor + accessories
-- Battle phase: top-down arena combat with loadout-specific stats
-- Ramming, weapons, boost, armor, shrinking arena
+- Equip phase: $1,000 budget, buy bike upgrades + armor + weapons
+- Battle phase: top-down arena combat with equipment effects active
+- Crashing, weapons (mop, newspapers, water balloon, nails, dog),
+  armor (helmet, body armor, trash can lid), bike upgrades
 - Last bike standing wins
 - Build reveal on results screen
 - Round loop (play again without rejoining)
@@ -397,11 +406,10 @@ Everything after Phase 5 is polish, progression, and deployment.
 
 ## 14. Open Questions (to decide as we build)
 
-- Exact budget amount and item prices (needs playtesting to balance)
-- Build phase timer duration (60s? 90s?)
-- Whether to allow sell-back of purchased items during build phase
-- Exact arena size and obstacle layout
-- Weapon damage values and fire rates
+- Item prices need playtesting to balance (current values are placeholders)
+- Exact stats for each item (speed boost amount, stun reduction, etc.)
+- Whether items should have upgrade tiers (e.g., Motor Level 1/2/3)
+- Equip phase timer (currently no timer, just ready-up; add a countdown?)
 - Arena shrink speed and timing
 - Whether eliminated players can interact as spectators (chat, emoji)
 - Sound and music sourcing
@@ -413,10 +421,10 @@ Everything after Phase 5 is polish, progression, and deployment.
 
 The game is successful when:
 1. Two friends can go from "here's a link" to playing in under 60
-   seconds (slightly longer than before due to build phase)
-2. The build phase creates genuine "what should I pick?" tension
+   seconds (slightly longer than before due to equip phase)
+2. The equip phase creates genuine "what should I pick?" tension
 3. Seeing enemy builds revealed after a round creates surprise and
-   conversation ("you had MISSILES?!")
+   conversation ("you had a DOG?!")
 4. Players want to immediately try a different build next round
 5. It works on both a laptop and a phone without issues
 6. It costs $0 to host and run
