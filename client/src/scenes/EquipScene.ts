@@ -247,23 +247,93 @@ export class EquipScene extends Phaser.Scene {
     const tag = (label: string, color: string) =>
       `<span style="background:${color}22;color:${color};padding:1px 6px;border-radius:4px;font-weight:bold;">${label}</span>`;
 
+    // Movement
     if (p.speed) tags.push(tag(`+${p.speed} Speed`, "#4488ff"));
+    if (p.pedalSpeed) tags.push(tag(`${p.pedalSpeed} Pedal Speed`, "#4488ff"));
+    if (p.turnBoost) tags.push(tag(`+${Math.round((p.turnBoost - 1) * 100)}% Turn`, "#4488ff"));
+    if (p.speedPenalty) tags.push(tag(`${Math.round((1 - p.speedPenalty) * 100)}% Slower`, "#ff4444"));
+    if (p.turnPenalty) tags.push(tag(`${Math.round((1 - p.turnPenalty) * 100)}% Wider Turn`, "#ff4444"));
     if (p.travel) tags.push(tag(`${p.travel}px Blink`, "#aa55ff"));
+
+    // Battery/energy
+    if (p.batteryDuration) tags.push(tag(`${(p.batteryDuration / 1000).toFixed(0)}s Battery`, "#16c79a"));
+    if (p.batteryDrain) tags.push(tag(`${Math.round((p.batteryDrain - 1) * 100)}% Faster Drain`, "#ff4444"));
+
+    // Nitro
+    if (p.nitroCooldown) tags.push(tag(`${(p.nitroCooldown / 1000).toFixed(0)}s Nitro CD`, "#ff8833"));
+
+    // Combat
     if (p.damage) tags.push(tag(`${p.damage} Dmg`, "#e94560"));
     if (p.accuracy !== undefined) tags.push(tag(`${p.accuracy}% Acc`, "#ffcc22"));
     if (p.velocity) tags.push(tag(`${p.velocity} Vel`, "#ff8833"));
     if (p.range) tags.push(tag(`${p.range}px Range`, "#33ddee"));
-    if (p.duration) tags.push(tag(`${(p.duration / 1000).toFixed(1)}s Effect`, "#16c79a"));
-    if (p.mapEffect) tags.push(tag(`${(p.mapEffect.duration / 1000).toFixed(0)}s Zone`, "#ff66aa"));
-    if (p.cooldown) tags.push(tag(`${(p.cooldown / 1000).toFixed(0)}s CD`, "#888899"));
+    if (p.cooldown) tags.push(tag(`${(p.cooldown / 1000).toFixed(1)}s CD`, "#888899"));
     if (p.uses) tags.push(tag(`${p.uses} Uses`, "#888899"));
-    if (p.turnBoost) tags.push(tag(`${Math.round((p.turnBoost - 1) * 100)}% Turn`, "#4488ff"));
-    if (p.stunReduction) tags.push(tag(`-${(p.stunReduction / 1000).toFixed(1)}s Stun`, "#16c79a"));
+    if (p.regenTime) tags.push(tag(`${(p.regenTime / 1000).toFixed(0)}s Regen`, "#888899"));
+
+    // Effects
+    if (p.duration) tags.push(tag(`${(p.duration / 1000).toFixed(1)}s Effect`, "#16c79a"));
+    if (p.mapEffect) tags.push(tag(`${(p.mapEffect.duration / 1000).toFixed(0)}s ${p.mapEffect.type} Zone`, "#ff66aa"));
+    if (p.handlingPenalty && item.category === "weapons") tags.push(tag(`${Math.round((1 - p.handlingPenalty) * 100)}% Handling Hit`, "#e94560"));
+    if (p.speedDebuff) tags.push(tag(`${Math.round((1 - p.speedDebuff) * 100)}% Speed Hit`, "#e94560"));
+
+    // Defense
     if (p.damageReduction) tags.push(tag(`-${p.damageReduction} Dmg Taken`, "#16c79a"));
-    if (p.rearBlock) tags.push(tag(`${p.rearBlock}% Rear Block`, "#ffcc22"));
-    if (p.boostDuration) tags.push(tag(`+${(p.boostDuration / 1000).toFixed(1)}s Boost`, "#ff8833"));
+    if (p.shieldUses) tags.push(tag(`${p.shieldUses} Shields`, "#ffcc22"));
+    if (p.shieldDuration) tags.push(tag(`${(p.shieldDuration / 1000).toFixed(0)}s Block`, "#ffcc22"));
+
+    // Special
+    if (p.nailVulnerability === "instant") tags.push(tag(`Pops on Nails`, "#ff4444"));
+    if (p.nailVulnerability === "resistant") tags.push(tag(`Nail Resistant`, "#16c79a"));
+    if (p.jousting) tags.push(tag(`Jousting`, "#aa55ff"));
+    if (p.dogSpeed) tags.push(tag(`Dog: ${p.dogSpeed} Speed`, "#ff8833"));
+    if (p.dogDuration) tags.push(tag(`${(p.dogDuration / 1000).toFixed(0)}s Active`, "#888899"));
 
     return tags.join("");
+  }
+
+  // Check if an item can be selected (prerequisites met, no exclusive conflict)
+  private canSelectItem(itemId: string): { allowed: boolean; reason?: string } {
+    const item = EQUIP_ITEMS.find((i) => i.id === itemId);
+    if (!item) return { allowed: false, reason: "Item not found" };
+
+    // Check prerequisite
+    if (item.requires && !this.selectedItems.has(item.requires)) {
+      const req = EQUIP_ITEMS.find((i) => i.id === item.requires);
+      return { allowed: false, reason: `Requires ${req?.name || item.requires} first` };
+    }
+
+    // Check budget
+    if (this.getRemainingBudget() < item.price) {
+      return { allowed: false, reason: "Not enough budget" };
+    }
+
+    return { allowed: true };
+  }
+
+  // When selecting an exclusive item, deselect others in the same group
+  private handleExclusiveGroup(item: EquipItem) {
+    if (!item.exclusiveGroup) return;
+    for (const otherId of Array.from(this.selectedItems)) {
+      const other = EQUIP_ITEMS.find((i) => i.id === otherId);
+      if (other && other.exclusiveGroup === item.exclusiveGroup && other.id !== item.id) {
+        this.selectedItems.delete(otherId);
+        const socket = getSocket();
+        socket.emit("toggleItem", otherId);
+      }
+    }
+  }
+
+  // When deselecting an item, also deselect anything that requires it
+  private handleRemoveDependents(itemId: string) {
+    for (const otherId of Array.from(this.selectedItems)) {
+      const other = EQUIP_ITEMS.find((i) => i.id === otherId);
+      if (other && other.requires === itemId) {
+        this.selectedItems.delete(otherId);
+        const socket = getSocket();
+        socket.emit("toggleItem", otherId);
+      }
+    }
   }
 
   private renderItems(category: EquipCategory) {
@@ -275,7 +345,31 @@ export class EquipScene extends Phaser.Scene {
       .map((item) => {
         const isSelected = this.selectedItems.has(item.id);
         const canAfford = isSelected || remaining >= item.price;
-        const disabled = !canAfford || this.isReady;
+        const missingPrereq = item.requires && !this.selectedItems.has(item.requires);
+        const isExcludedByOther = item.exclusiveGroup && !isSelected &&
+          Array.from(this.selectedItems).some((id) => {
+            const other = EQUIP_ITEMS.find((i) => i.id === id);
+            return other && other.exclusiveGroup === item.exclusiveGroup;
+          });
+        const disabled = this.isReady || (!isSelected && (!canAfford || missingPrereq));
+
+        // Build badge text
+        let badge = "";
+        if (item.upgradeLabel) {
+          badge = `<span style="background:#ff883322;color:#ff8833;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:bold;margin-left:6px;">${item.upgradeLabel}</span>`;
+        }
+        if (item.exclusiveGroup) {
+          badge += `<span style="background:#aa55ff22;color:#aa55ff;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:bold;margin-left:6px;">PICK ONE</span>`;
+        }
+
+        // Lock reason
+        let lockReason = "";
+        if (missingPrereq && !isSelected) {
+          const req = EQUIP_ITEMS.find((i) => i.id === item.requires);
+          lockReason = `<div style="font-size: 11px; color: #ff8833; margin-top: 3px;">Requires ${req?.name || "prerequisite"}</div>`;
+        } else if (isExcludedByOther && !isSelected) {
+          lockReason = `<div style="font-size: 11px; color: #aa55ff; margin-top: 3px;">Swap with current tire selection</div>`;
+        }
 
         return `
           <div class="equip-item" data-id="${item.id}" style="
@@ -284,10 +378,10 @@ export class EquipScene extends Phaser.Scene {
             padding: 14px 12px;
             margin-bottom: 8px;
             background: ${isSelected ? "#2a2a55" : "#222244"};
-            border: 2px solid ${isSelected ? "#4488ff" : "#333355"};
+            border: 2px solid ${isSelected ? "#4488ff" : isExcludedByOther ? "#aa55ff44" : "#333355"};
             border-radius: 10px;
-            cursor: ${disabled && !isSelected ? "not-allowed" : "pointer"};
-            opacity: ${disabled && !isSelected ? "0.45" : "1"};
+            cursor: ${disabled && !isSelected && !isExcludedByOther ? "not-allowed" : "pointer"};
+            opacity: ${disabled && !isSelected && missingPrereq ? "0.4" : "1"};
             transition: all 0.15s;
           ">
             <div style="
@@ -302,14 +396,15 @@ export class EquipScene extends Phaser.Scene {
             ">${isSelected ? `<svg viewBox="0 0 24 24" width="22" height="22" style="position:absolute;top:0;left:0;"><polyline points="4,12 10,18 20,6" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` : ""}</div>
             <div style="font-size: 24px; margin-right: 12px; flex-shrink: 0;">${item.icon}</div>
             <div style="flex: 1; min-width: 0;">
-              <div style="font-size: 15px; font-weight: bold; color: #ffffff;">${item.name}</div>
+              <div style="font-size: 15px; font-weight: bold; color: #ffffff;">${item.name}${badge}</div>
               <div style="font-size: 12px; color: #888899; margin-top: 2px;">${item.description}</div>
-              <div style="font-size: 11px; color: #667788; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px;">${this.formatStats(item)}</div>
+              ${lockReason}
+              <div style="font-size: 11px; color: #667788; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">${this.formatStats(item)}</div>
             </div>
             <div style="
               font-size: 16px;
               font-weight: bold;
-              color: ${isSelected ? "#ffcc22" : canAfford ? "#16c79a" : "#ff4444"};
+              color: ${isSelected ? "#ffcc22" : canAfford && !missingPrereq ? "#16c79a" : "#ff4444"};
               margin-left: 12px;
               flex-shrink: 0;
             ">$${item.price}</div>
@@ -336,18 +431,43 @@ export class EquipScene extends Phaser.Scene {
     if (this.selectedItems.has(itemId)) {
       // Deselect
       this.selectedItems.delete(itemId);
+      // Also remove anything that depends on this item
+      this.handleRemoveDependents(itemId);
+
+      const socket = getSocket();
+      socket.emit("toggleItem", itemId);
     } else {
-      // Check budget
-      if (this.getRemainingBudget() < item.price) {
+      // Check prerequisite
+      if (item.requires && !this.selectedItems.has(item.requires)) {
+        const req = EQUIP_ITEMS.find((i) => i.id === item.requires);
+        this.showToast(`Buy ${req?.name || "prerequisite"} first!`);
+        return;
+      }
+
+      // Check budget (account for exclusive swap refund)
+      let effectiveCost = item.price;
+      if (item.exclusiveGroup) {
+        for (const otherId of this.selectedItems) {
+          const other = EQUIP_ITEMS.find((i) => i.id === otherId);
+          if (other && other.exclusiveGroup === item.exclusiveGroup) {
+            effectiveCost -= other.price; // Refund the swapped item
+          }
+        }
+      }
+
+      if (this.getRemainingBudget() < effectiveCost) {
         this.showToast("Not enough budget!");
         return;
       }
-      this.selectedItems.add(itemId);
-    }
 
-    // Tell server
-    const socket = getSocket();
-    socket.emit("toggleItem", itemId);
+      // Handle exclusive group (deselect conflicting item)
+      this.handleExclusiveGroup(item);
+
+      this.selectedItems.add(itemId);
+
+      const socket = getSocket();
+      socket.emit("toggleItem", itemId);
+    }
 
     // Re-render current tab and budget
     this.updateBudget();
