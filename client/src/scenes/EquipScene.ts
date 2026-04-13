@@ -15,6 +15,7 @@ export class EquipScene extends Phaser.Scene {
   private selectedItems: Set<string> = new Set();
   private isReady: boolean = false;
   private activeCategory: EquipCategory = "bike";
+  private readyTogglePending: boolean = false; // prevent double-click
 
   constructor() {
     super({ key: "EquipScene" });
@@ -44,6 +45,7 @@ export class EquipScene extends Phaser.Scene {
       this.cleanupOverlay();
       this.scene.start("GameScene", {
         roomCode: this.roomCode,
+        playerName: this.playerName,
         loadout: {
           itemIds: Array.from(this.selectedItems),
           budgetRemaining: this.getRemainingBudget(),
@@ -484,6 +486,11 @@ export class EquipScene extends Phaser.Scene {
   }
 
   private toggleReady() {
+    // Prevent double-click from toggling twice (server uses toggle logic)
+    if (this.readyTogglePending) return;
+    this.readyTogglePending = true;
+    setTimeout(() => { this.readyTogglePending = false; }, 600);
+
     this.isReady = !this.isReady;
 
     const btn = document.getElementById("equip-ready-btn") as HTMLButtonElement;

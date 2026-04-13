@@ -240,15 +240,25 @@ io.on("connection", (socket) => {
   // Equip phase: toggle ready
   socket.on("equipReady", () => {
     const roomCode = roomManager.getPlayerRoom(socket.id);
-    if (!roomCode) return;
+    if (!roomCode) {
+      console.log(`[equipReady] ${socket.id}: no room found`);
+      return;
+    }
 
     const equipState = equipStates.get(roomCode);
-    if (!equipState) return;
+    if (!equipState) {
+      console.log(`[equipReady] ${socket.id}: no equip state for room ${roomCode}`);
+      return;
+    }
 
     const playerLoadout = equipState.loadouts.get(socket.id);
-    if (!playerLoadout) return;
+    if (!playerLoadout) {
+      console.log(`[equipReady] ${socket.id}: no loadout entry in equip state (keys: ${Array.from(equipState.loadouts.keys()).join(", ")})`);
+      return;
+    }
 
     playerLoadout.isReady = !playerLoadout.isReady;
+    console.log(`[equipReady] ${socket.id} in ${roomCode}: now ${playerLoadout.isReady ? "READY" : "NOT READY"}`);
 
     // Broadcast update
     let spent = 0;
@@ -268,12 +278,14 @@ io.on("connection", (socket) => {
 
     // Check if all players are ready -> start battle
     let allReady = true;
-    for (const loadout of equipState.loadouts.values()) {
+    const readyStatus: string[] = [];
+    for (const [pid, loadout] of equipState.loadouts.entries()) {
+      readyStatus.push(`${pid.substring(0, 8)}=${loadout.isReady}`);
       if (!loadout.isReady) {
         allReady = false;
-        break;
       }
     }
+    console.log(`[equipReady] Ready check: ${readyStatus.join(", ")} => allReady=${allReady}`);
 
     if (allReady) {
       const roomInfo = roomManager.getRoomInfo(roomCode);
@@ -312,6 +324,7 @@ io.on("connection", (socket) => {
       // Clean up equip state
       equipStates.delete(roomCode);
 
+      console.log(`[equipReady] Battle starting in ${roomCode} with ${roomInfo.players.length} players`);
       io.to(roomCode).emit("battleStarting");
       broadcastRoomUpdate(roomCode);
     }

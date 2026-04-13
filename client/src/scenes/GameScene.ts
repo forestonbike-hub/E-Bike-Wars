@@ -88,6 +88,7 @@ export class GameScene extends Phaser.Scene {
   // Win overlay
   private winOverlay: Phaser.GameObjects.Container | null = null;
   private roomCode: string = "";
+  private playerName: string = "";
 
   // Own state for HUD
   private myBoosting = false;
@@ -105,8 +106,9 @@ export class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
   }
 
-  init(data: { roomCode?: string; loadout?: PlayerLoadout }) {
+  init(data: { roomCode?: string; playerName?: string; loadout?: PlayerLoadout }) {
     this.roomCode = data?.roomCode || "";
+    this.playerName = data?.playerName || "";
     // Build the list of usable items from the loadout
     this.usableItems = [];
     this.selectedItemIndex = -1;
@@ -189,7 +191,7 @@ export class GameScene extends Phaser.Scene {
     socket.on("returnToLobby", () => {
       this.scene.start("LobbyScene", {
         roomCode: this.roomCode,
-        playerName: "",
+        playerName: this.playerName,
       });
     });
 
