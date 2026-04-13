@@ -4,7 +4,7 @@ interface ServerRoom {
   code: string;
   hostId: string;
   players: Map<string, Player>;
-  state: "lobby" | "playing" | "results";
+  state: "lobby" | "equipping" | "playing" | "results";
   maxPlayers: number;
   createdAt: number;
 }
@@ -169,11 +169,19 @@ export class RoomManager {
     return { canStart: true };
   }
 
-  startGame(roomCode: string): boolean {
+  startEquipPhase(roomCode: string): boolean {
+    const room = this.rooms.get(roomCode);
+    if (!room) return false;
+    room.state = "equipping";
+    console.log(`Equip phase started in room ${roomCode}`);
+    return true;
+  }
+
+  startBattle(roomCode: string): boolean {
     const room = this.rooms.get(roomCode);
     if (!room) return false;
     room.state = "playing";
-    console.log(`Game started in room ${roomCode}`);
+    console.log(`Battle started in room ${roomCode}`);
     return true;
   }
 

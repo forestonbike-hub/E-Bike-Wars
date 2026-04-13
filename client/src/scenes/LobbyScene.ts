@@ -50,11 +50,11 @@ export class LobbyScene extends Phaser.Scene {
       }
     });
 
-    socket.on("gameStarting", () => {
+    socket.on("equipPhaseStarting", () => {
       this.cleanupOverlay();
-      this.scene.start("GameScene", {
+      this.scene.start("EquipScene", {
         roomCode: this.roomCode,
-        roomInfo: this.roomInfo,
+        playerName: this.playerName,
       });
     });
 
@@ -66,7 +66,7 @@ export class LobbyScene extends Phaser.Scene {
     this.events.on("shutdown", () => {
       this.cleanupOverlay();
       socket.off("roomUpdated");
-      socket.off("gameStarting");
+      socket.off("equipPhaseStarting");
       socket.off("error");
     });
   }

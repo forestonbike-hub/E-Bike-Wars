@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { HomeScene } from "./scenes/HomeScene";
 import { LobbyScene } from "./scenes/LobbyScene";
+import { EquipScene } from "./scenes/EquipScene";
 import { GameScene } from "./scenes/GameScene";
 
 // Hide loading text
@@ -28,7 +29,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [HomeScene, LobbyScene, GameScene],
+  scene: [HomeScene, LobbyScene, EquipScene, GameScene],
 };
 
 const game = new Phaser.Game(config);

@@ -24,8 +24,50 @@ export interface RoomInfo {
   code: string;
   hostId: string;
   players: Player[];
-  state: "lobby" | "playing" | "results";
+  state: "lobby" | "equipping" | "playing" | "results";
   maxPlayers: number;
+}
+
+// ── Equip Phase: items players can buy before battle ──
+
+export type EquipCategory = "bike" | "armor" | "weapons";
+
+export interface EquipItem {
+  id: string;
+  category: EquipCategory;
+  name: string;
+  description: string;
+  price: number;
+  icon: string; // emoji for now, sprites later
+}
+
+export const STARTING_BUDGET = 1000;
+
+export const EQUIP_ITEMS: EquipItem[] = [
+  // ── Bike upgrades ──
+  { id: "motor-1",      category: "bike",    name: "Motor",       description: "Increases top speed",                    price: 150, icon: "⚡" },
+  { id: "battery-1",    category: "bike",    name: "Battery",     description: "Longer boost duration",                  price: 120, icon: "🔋" },
+  { id: "tires-1",      category: "bike",    name: "Tires",       description: "Better grip and turning",                price: 100, icon: "🛞" },
+  { id: "nitro-1",      category: "bike",    name: "Nitro",       description: "Massive speed burst on demand",          price: 250, icon: "🔥" },
+  { id: "teleporter-1", category: "bike",    name: "Teleporter",  description: "Short-range blink to dodge attacks",     price: 300, icon: "✨" },
+
+  // ── Armor ──
+  { id: "helmet-1",     category: "armor",   name: "Helmet",      description: "Reduces crash stun time",                price: 80,  icon: "⛑️" },
+  { id: "bodyarmor-1",  category: "armor",   name: "Body Armor",  description: "Absorbs damage from hits",               price: 200, icon: "🦺" },
+  { id: "trashlid-1",   category: "armor",   name: "Trash Can Lid", description: "Blocks attacks from behind",           price: 120, icon: "🛡️" },
+
+  // ── Weapons ──
+  { id: "mop-1",        category: "weapons", name: "Mop",         description: "Swing to knock nearby riders",           price: 100, icon: "🧹" },
+  { id: "newspapers-1", category: "weapons", name: "Newspapers",  description: "Throw to temporarily blind opponents",   price: 80,  icon: "📰" },
+  { id: "waterballoon-1", category: "weapons", name: "Water Balloon", description: "Lob to make area slippery",          price: 120, icon: "🎈" },
+  { id: "nails-1",      category: "weapons", name: "Nails",       description: "Drop behind you to pop tires",           price: 150, icon: "📌" },
+  { id: "dog-1",        category: "weapons", name: "Dog",         description: "Chases nearest opponent and trips them", price: 250, icon: "🐕" },
+];
+
+// A player's purchases during equip phase
+export interface PlayerLoadout {
+  itemIds: string[];
+  budgetRemaining: number;
 }
 
 // Game state sent from server to all clients every tick
@@ -64,6 +106,9 @@ export interface ClientToServerEvents {
   startGame: () => void;
   leaveRoom: () => void;
   playerInput: (input: PlayerInput) => void;
+  // Equip phase
+  toggleItem: (itemId: string) => void;
+  equipReady: () => void;
 }
 
 // Socket.io event types (server -> client)
@@ -73,4 +118,8 @@ export interface ServerToClientEvents {
   gameState: (state: GameState) => void;
   playerLeft: (playerId: string) => void;
   error: (message: string) => void;
+  // Equip phase
+  equipPhaseStarting: () => void;
+  equipUpdate: (data: { playerId: string; loadout: PlayerLoadout; isReady: boolean }) => void;
+  battleStarting: () => void;
 }
