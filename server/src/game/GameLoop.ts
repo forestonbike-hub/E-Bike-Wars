@@ -97,6 +97,7 @@ interface ServerBike {
   // Crash
   isCrashed: boolean;
   crashTimer: number;
+  crashImmunityTimer: number; // ms of immunity after recovering from a crash
 
   // Mop
   mopExtended: boolean;
@@ -388,6 +389,7 @@ export class GameLoop {
       // Crash
       isCrashed: false,
       crashTimer: 0,
+      crashImmunityTimer: 0,
 
       // Mop
       mopExtended: false,
@@ -524,12 +526,19 @@ export class GameLoop {
         }
       }
 
+      // Crash immunity countdown
+      if (bike.crashImmunityTimer > 0) {
+        bike.crashImmunityTimer -= dtMs;
+        if (bike.crashImmunityTimer <= 0) bike.crashImmunityTimer = 0;
+      }
+
       // Crash recovery
       if (bike.isCrashed) {
         bike.crashTimer -= dtMs;
         if (bike.crashTimer <= 0) {
           bike.isCrashed = false;
           bike.crashTimer = 0;
+          bike.crashImmunityTimer = 800; // 0.8s immunity after getting up
         }
         continue; // crashed bikes can't act
       }
@@ -812,6 +821,7 @@ export class GameLoop {
     // ── Bike-to-bike collisions ──
     const bikeArray = Array.from(this.bikes.values()).filter(b => !b.isDead);
     const collisionDist = BIKE_RADIUS * 2;
+    const SEPARATION_PUSH = 30; // extra pixels to push apart after crash
 
     for (let i = 0; i < bikeArray.length; i++) {
       for (let j = i + 1; j < bikeArray.length; j++) {
@@ -824,27 +834,28 @@ export class GameLoop {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < collisionDist && dist > 0.001) {
-          // Push apart
           const nx = dx / dist;
           const ny = dy / dist;
-          const overlap = collisionDist - dist;
+
+          // Always push apart to prevent overlap
+          const overlap = collisionDist - dist + SEPARATION_PUSH;
           a.x -= nx * overlap * 0.5;
           a.y -= ny * overlap * 0.5;
           b.x += nx * overlap * 0.5;
           b.y += ny * overlap * 0.5;
+
+          // If either has crash immunity, just push apart (no damage)
+          if (a.crashImmunityTimer > 0 || b.crashImmunityTimer > 0) continue;
 
           // Mop jousting: if one has mop extended and collision is roughly in front of them
           const aMopHit = a.mopExtended && this.isFrontCollision(a, b);
           const bMopHit = b.mopExtended && this.isFrontCollision(b, a);
 
           if (aMopHit && !bMopHit) {
-            // A jousts B: only B crashes
             this.crashBike(b, a.stats.mopDamage + CRASH_DAMAGE);
           } else if (bMopHit && !aMopHit) {
-            // B jousts A: only A crashes
             this.crashBike(a, b.stats.mopDamage + CRASH_DAMAGE);
           } else {
-            // Normal mutual crash
             this.crashBike(a, CRASH_DAMAGE);
             this.crashBike(b, CRASH_DAMAGE);
           }
