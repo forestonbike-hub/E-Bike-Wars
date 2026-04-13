@@ -262,19 +262,15 @@ export class EquipScene extends Phaser.Scene {
             transition: all 0.15s;
           ">
             <div style="
-              width: 24px;
-              height: 24px;
-              border: 2px solid ${isSelected ? "#4488ff" : "#555577"};
+              width: 28px;
+              height: 28px;
+              border: 3px solid ${isSelected ? "#4488ff" : "#555577"};
               border-radius: 6px;
               background: ${isSelected ? "#4488ff" : "transparent"};
-              display: flex;
-              align-items: center;
-              justify-content: center;
               margin-right: 12px;
               flex-shrink: 0;
-              font-size: 14px;
-              color: #ffffff;
-            ">${isSelected ? "✓" : ""}</div>
+              position: relative;
+            ">${isSelected ? `<svg viewBox="0 0 24 24" width="22" height="22" style="position:absolute;top:0;left:0;"><polyline points="4,12 10,18 20,6" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` : ""}</div>
             <div style="font-size: 24px; margin-right: 12px; flex-shrink: 0;">${item.icon}</div>
             <div style="flex: 1; min-width: 0;">
               <div style="font-size: 15px; font-weight: bold; color: #ffffff;">${item.name}</div>
