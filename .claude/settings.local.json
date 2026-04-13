@@ -54,7 +54,8 @@
       "WebFetch(domain:fly.io)",
       "WebFetch(domain:railway.app)",
       "WebFetch(domain:railway.com)",
-      "WebFetch(domain:docs.render.com)"
+      "WebFetch(domain:docs.render.com)",
+      "Bash(taskkill //F //IM node.exe)"
     ]
   }
 }
