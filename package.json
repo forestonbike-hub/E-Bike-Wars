@@ -8,8 +8,11 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite",
     "dev:server": "tsx watch server/src/index.ts",
-    "build": "tsc && vite build",
-    "start": "node dist/server/index.js"
+    "build": "vite build",
+    "start": "tsx server/src/index.ts"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "express": "^4.21.0",

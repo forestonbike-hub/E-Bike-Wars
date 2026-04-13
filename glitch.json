@@ -1,0 +1,9 @@
+{
+  "install": "npm install",
+  "start": "npm run build && npm start",
+  "watch": {
+    "restart": {
+      "include": ["server/src/**/*.ts", "shared/**/*.ts"]
+    }
+  }
+}

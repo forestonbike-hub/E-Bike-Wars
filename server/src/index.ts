@@ -1,6 +1,8 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import path from "path";
+import { fileURLToPath } from "url";
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -12,6 +14,17 @@ import { GameLoop } from "./game/GameLoop.js";
 
 const app = express();
 const httpServer = createServer(app);
+
+// Serve built client files in production
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.resolve(__dirname, "../../dist/client");
+app.use(express.static(clientDist));
+// SPA fallback: serve index.html for all non-API routes
+app.get("*", (_req, res, next) => {
+  // Skip socket.io and API routes
+  if (_req.path.startsWith("/socket.io")) return next();
+  res.sendFile(path.join(clientDist, "index.html"));
+});
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
