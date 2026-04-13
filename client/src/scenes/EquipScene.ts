@@ -4,6 +4,7 @@ import {
   EQUIP_ITEMS,
   STARTING_BUDGET,
   type EquipCategory,
+  type EquipItem,
   type PlayerLoadout,
 } from "@shared/types";
 
@@ -240,6 +241,31 @@ export class EquipScene extends Phaser.Scene {
     this.renderItems(category);
   }
 
+  private formatStats(item: EquipItem): string {
+    const p = item.params;
+    const tags: string[] = [];
+    const tag = (label: string, color: string) =>
+      `<span style="background:${color}22;color:${color};padding:1px 6px;border-radius:4px;font-weight:bold;">${label}</span>`;
+
+    if (p.speed) tags.push(tag(`+${p.speed} Speed`, "#4488ff"));
+    if (p.travel) tags.push(tag(`${p.travel}px Blink`, "#aa55ff"));
+    if (p.damage) tags.push(tag(`${p.damage} Dmg`, "#e94560"));
+    if (p.accuracy !== undefined) tags.push(tag(`${p.accuracy}% Acc`, "#ffcc22"));
+    if (p.velocity) tags.push(tag(`${p.velocity} Vel`, "#ff8833"));
+    if (p.range) tags.push(tag(`${p.range}px Range`, "#33ddee"));
+    if (p.duration) tags.push(tag(`${(p.duration / 1000).toFixed(1)}s Effect`, "#16c79a"));
+    if (p.mapEffect) tags.push(tag(`${(p.mapEffect.duration / 1000).toFixed(0)}s Zone`, "#ff66aa"));
+    if (p.cooldown) tags.push(tag(`${(p.cooldown / 1000).toFixed(0)}s CD`, "#888899"));
+    if (p.uses) tags.push(tag(`${p.uses} Uses`, "#888899"));
+    if (p.turnBoost) tags.push(tag(`${Math.round((p.turnBoost - 1) * 100)}% Turn`, "#4488ff"));
+    if (p.stunReduction) tags.push(tag(`-${(p.stunReduction / 1000).toFixed(1)}s Stun`, "#16c79a"));
+    if (p.damageReduction) tags.push(tag(`-${p.damageReduction} Dmg Taken`, "#16c79a"));
+    if (p.rearBlock) tags.push(tag(`${p.rearBlock}% Rear Block`, "#ffcc22"));
+    if (p.boostDuration) tags.push(tag(`+${(p.boostDuration / 1000).toFixed(1)}s Boost`, "#ff8833"));
+
+    return tags.join("");
+  }
+
   private renderItems(category: EquipCategory) {
     const container = document.getElementById("equip-item-list")!;
     const items = EQUIP_ITEMS.filter((item) => item.category === category);
@@ -278,6 +304,7 @@ export class EquipScene extends Phaser.Scene {
             <div style="flex: 1; min-width: 0;">
               <div style="font-size: 15px; font-weight: bold; color: #ffffff;">${item.name}</div>
               <div style="font-size: 12px; color: #888899; margin-top: 2px;">${item.description}</div>
+              <div style="font-size: 11px; color: #667788; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px;">${this.formatStats(item)}</div>
             </div>
             <div style="
               font-size: 16px;
