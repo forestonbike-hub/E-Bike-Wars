@@ -313,7 +313,7 @@ Each weapon has unique behavior during battle:
 - **Server:** Node.js + Express (room management, game state)
 - **Language:** TypeScript (client and server)
 - **Build tool:** Vite (fast development builds)
-- **Hosting:** Glitch.com (free, no credit card)
+- **Hosting:** Render.com (Free instance type, no paid upgrades)
 
 ### 11.2 Networking Model
 - Server is authoritative: it owns the true game state
@@ -334,7 +334,8 @@ Each weapon has unique behavior during battle:
 
 ### 11.4 Constraints
 - Zero cost: no paid services or subscriptions
-- Glitch.com limits: 512MB RAM, 200MB disk, apps sleep after 5 min idle
+- Render.com Free instance limits: 0.1 CPU, 512MB RAM, spins down
+  after ~15 min idle (first visitor after a sleep waits ~30-60 seconds)
 - Must work without WebGL (Canvas fallback for older devices)
 
 ---
@@ -381,8 +382,8 @@ Session leaderboard, match history (browser storage), emoji reactions,
 arena variations, new items.
 
 ### Phase 9: Deployment
-Deploy to Glitch.com. Shareable URL. Open Graph previews. Share
-button in-game.
+Deploy to Render.com (done: https://e-bike-wars.onrender.com).
+Open Graph previews. Share button in-game.
 
 ---
 
